@@ -4,13 +4,26 @@ n : image length
 p : 2*p+1 is the patch length
 im : numpy array of float of size (m,n,3) : the image
 vect_field : numpy array of size (m,n,2) : field of displacement vector for each pixel
+T : int : inferior limit for the infinite norm of displacements vectors
 """
 
 import numpy as np
 
 def create_vect_field(im, T):
     """
-    A function to create a random vect_field where every vector are biger than T in infinite norm    
+    A function to create a random vect_field where every vector are biger than T in infinite norm  
+    Parameters
+    ----------
+    im : array-like, shape (m, n, 3)
+        image
+    T : int
+        inferior limit for the infinite norm of displacements vectors
+    
+    Returns
+    -------
+    vect_field : array-like, shape (m, n, 2)
+        Field of displacement vectors for each pixel
+
     """
     m,n,_ = im.shape
     vect_field = np.random.randint(low = (0,0), high = (m-1,n-1), size = (n,m,2))
@@ -28,12 +41,23 @@ def create_vect_field(im, T):
     pos = np.zeros((m,n,2))
     pos[:,:,0] = interval_1[:,None]*np.ones(n)[None,:]
     pos[:,:,1] = interval_2[None,:]*np.ones(m)[:,None]
-
     vect_field = vect_field - pos
 
     return vect_field
 
+def euclidean_distance_patchs(im, i1, j1, i2, j2, p):
+    """
+    Compute the euclidean distance between patchs of size 2*p+1 center in (i1,j1) and (i2,j2)
+    """
+    patch_1 = im[i1-p:i1+p+1,j1-p:j1+p+1,:]
+    patch_2 = im[i2-p:i2+p+1,j2-p:j2+p+1,:]
+    return np.sqrt(np.sum((patch_1-patch_2)**2))
 
+
+def propagation_vect_field(im, vect_field, T, p):
+    """
+    Fonction to propagate the vectors field
+    """
 
 
 
