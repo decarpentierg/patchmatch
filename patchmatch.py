@@ -10,6 +10,14 @@ T : int : inferior limit for the infinite norm of displacements vectors
 import numpy as np
 np.random.seed(0)
 
+def euclidean_distance_patchs(im, i1, j1, i2, j2, p):
+    """
+    Compute the euclidean distance between patchs of size 2*p+1 center in (i1,j1) and (i2,j2)
+    """
+    patch_1 = im[i1-p:i1+p+1,j1-p:j1+p+1,:]
+    patch_2 = im[i2-p:i2+p+1,j2-p:j2+p+1,:]
+    return np.sqrt(np.sum((patch_1-patch_2)**2))
+
 def create_vect_field(im, T, p):
     """
     A function to create a random vect_field where every vector are biger than T in infinite norm  
@@ -22,12 +30,14 @@ def create_vect_field(im, T, p):
     
     Returns
     -------
-    vect_field : array-like, shape (m, n, 2)
-        Field of displacement vectors for each pixel
+    vect_field : array-like, shape (m, n, 3)
+        Field of displacement vectors for each pixel. vect_field[i,j,0] is the x coordonate of the displacement vector. 
+        vect_field[i,j,1] is the y coordonate of the displacement vector. 
+        vect_field[i,j,2] is the distance between the patch and the moved patch.
 
     """
     m,n,_ = im.shape
-    vect_field = np.random.randint(low=(0,0), high=(m-1,n-1), size=(m,n,2))
+    vect_field = np.zeros((m,n,3))
 
     #generate the target point with the constraint T
     I = np.arange(p, m-p)
@@ -43,26 +53,37 @@ def create_vect_field(im, T, p):
     #compute the displacement vectors
     pos = np.transpose(np.mgrid[0:m, 0:n], axes=(1, 2, 0))
 
-    vect_field = vect_field - pos
+    vect_field[:,:,0:2] = vect_field[:,:,0:2] - pos
+
+    for i in range(m):
+        for j in range(n):
+            vect_field[i,j,2] = euclidean_distance_patchs(im, i, j, vect_field[i,j,0], vect_field[i,j,1])
 
     return vect_field
 
-def euclidean_distance_patchs(im, i1, j1, i2, j2, p):
-    """
-    Compute the euclidean distance between patchs of size 2*p+1 center in (i1,j1) and (i2,j2)
-    """
-    patch_1 = im[i1-p:i1+p+1,j1-p:j1+p+1,:]
-    patch_2 = im[i2-p:i2+p+1,j2-p:j2+p+1,:]
-    return np.sqrt(np.sum((patch_1-patch_2)**2))
-
 class PatchMatch:
-    def __init__(self, im, T, p, N) -> None:
-        """Instantiate the PatchMatch algorithm with an image im, a threshold T, and a patch size p."""
+    def __init__(self, im, T, p, N, L) -> None:
+        """Instantiate the PatchMatch algorithm 
+        
+        Parameters
+        ----------
+        im : array-like, shape (m, n, 3)
+            image
+        T : int
+            inferior limit for the infinite norm of displacements vectors
+        p : int
+            a patch is a shape (2*p+1,2*p+1)
+        N : int
+            number of iteration in the PatchMatch algorithm
+        L : int
+            number of candidate in the random search phase. We choose L new candidates randomely in square of size 2**(i-1) (i \in [1,L])
+        """
         self.im = im
         self.m, self.n, _ = im.shape
         self.T = T
         self.p = p
         self.N = N
+        self.L = L
         self.vect_field = create_vect_field(im, T, p)
     
     def patch(self, i, j):
@@ -80,13 +101,18 @@ class PatchMatch:
         dk, dl = self.vect_field[k, l]
         return self.dist(i, j, i+dk, j+dl)
     
+    def test_min_separation(self, x, y):
+        """Test if the displacement with the vector (x,y) is bigger in infinite norm than T"""
+        T = self.T
+        return (np.abs(x)>=T and np.abs(y)>=T)
+
     def scan(self):
         """Run a raster scan over the image and propagate displacement vectors."""
         m, n, p = self.m, self.n, self.p
         for i in range(p, m-p):
             for j in range(p, n-p):
                 # Evaluate distance to the current nearest neighboor
-                d0 = self.dist2candidate(i, j, i, j)
+                d0 = self.vect_field[i, j, 2]
                 # Evaluate distance to the candidate defined by the displacement of the pixel above
                 if i > p and i + self.vect_field[i-1, j, 0] + p < m:
                     d_up = self.dist2candidate(i, j, i-1, j)
@@ -101,14 +127,31 @@ class PatchMatch:
                 idx = np.argmin([d0, d_up, d_left])
                 # Propagate best displacement
                 if idx == 1:
-                    self.vect_field[i, j] = self.vect_field[i-1, j]
+                    self.vect_field[i, j, 0:2] = self.vect_field[i-1, j, 0:2]
+                    self.vect_field[i, j, 2] = d_up
                 if idx == 2:
-                    self.vect_field[i, j] = self.vect_field[i, j-1]
+                    self.vect_field[i, j, 0:2] = self.vect_field[i, j-1, 0:2]
+                    self.vect_field[i, j, 2] = d_left
     
     def flip(self):
         """Flip image and vector field."""
         self.im = self.im[::-1, ::-1]
         self.vect_field = -self.vect_field[::-1, ::-1]
+
+    def random_search(self):
+        """Function to make the random search"""
+        m, n, p = self.m, self.n, self.p
+        for i in range(p, m-p):
+            for j in range(p, n-p):
+                for k in range(self.L):
+                    x, y = self.vect_field[i,j]
+                    x_ = np.random.randint(np.max(x-2**(k-1),p), np.min(x+2**(k-1)+1,m-p))
+                    y_ = np.random.randint(np.max(y-2**(k-1),p), np.min(y+2**(k-1)+1,m-p))
+                    if self.test_min_separation(x_,y_):
+                        d_init = self.vect_field[i,j,2]
+                        d_test = self.dist(i,j,i+x_,j+y_)
+                        if d_test < d_init:
+                            self.vect_field[i,j] = np.array([x_,y_])
 
     def run(self):
         """Run the PatchMatch algorithm and return the resulting vector field."""
