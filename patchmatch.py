@@ -8,9 +8,24 @@ T : int : inferior limit for the infinite norm of displacements vectors
 """
 
 import numpy as np
+from numba.experimental import jitclass
+from numba import int64, float64
+
 np.random.seed(0)
 
+spec = [
+    ("im", float64[:, :, :]),
+    ("m", int64),
+    ("n", int64),
+    ("T", int64),
+    ("p", int64),
+    ("N", int64),
+    ("L", int64),
+    ("vect_field", int64[:, :, :]),
+    ("dist_field", float64[:, :])
+]
 
+@jitclass(spec)
 class PatchMatch:
     def __init__(self, im, T, p, N, L):
         """
@@ -50,7 +65,7 @@ class PatchMatch:
             vect_field[i,j,2] is the distance between the patch and the moved patch.
         """
         m, n, p = self.m, self.n, self.p
-        self.vect_field = np.zeros((m, n, 2), dtype=int)
+        self.vect_field = np.zeros((m, n, 2), dtype=np.int64)
 
         # generate the target point with the constraint T
         # i coordinate
@@ -65,14 +80,16 @@ class PatchMatch:
             self.vect_field[:,j,1] = np.random.choice(J[idx], m)
 
         #compute the displacement vectors
-        pos = np.transpose(np.mgrid[0:m, 0:n], axes=(1, 2, 0))
+        pos = np.zeros((m, n, 2), dtype=np.int64)
+        pos[:, :, 0] = np.arange(m).reshape((m, 1))
+        pos[:, :, 1] = np.arange(n).reshape((1, n))
         self.vect_field = self.vect_field - pos
 
 
     def create_dist_field(self):
         # Compute the distances between a patch and its matched patch
         m, n, p = self.m, self.n, self.p
-        self.dist_field = np.zeros((m, n))
+        self.dist_field = np.zeros((m, n), dtype=np.float64)
         for i in range(p, m-p):
             for j in range(p, n-p):
                 self.dist_field[i,j] = self.dist2candidate(i, j, i, j)
@@ -87,7 +104,7 @@ class PatchMatch:
     def dist(self, i, j, k, l):
         """Return l2 distance between patch centered at (i, j) and patch centered at (k, l)."""
         # print(i, j, k, l)
-        return np.linalg.norm(self.patch(i, j) - self.patch(k, l))
+        return np.sqrt(np.sum((self.patch(i, j) - self.patch(k, l))**2))
     
 
     def dist2candidate(self, i, j, k, l):
@@ -100,7 +117,6 @@ class PatchMatch:
         """Test if the displacement with the vector (x,y) is bigger in infinite norm than T"""
         T = self.T
         return (np.abs(x)>=T and np.abs(y)>=T)
-
 
     def scan(self):
         """Run a raster scan over the image and propagate displacement vectors."""
@@ -120,7 +136,7 @@ class PatchMatch:
                 else:
                     d_left = np.Inf
                 # Compute best displacement
-                idx = np.argmin([d0, d_up, d_left])
+                idx = np.argmin(np.array([d0, d_up, d_left], dtype=np.float64))
                 # Propagate best displacement
                 if idx == 1:
                     self.vect_field[i, j] = self.vect_field[i-1, j]
