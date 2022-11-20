@@ -182,7 +182,19 @@ class PatchMatch:
 
 
 def plot_vect_field(pm_, mask, step=100, **kwargs):
-    """Plot vect_field as arrows above the image"""
+    """
+    Plot vect_field as arrows above the image
+    
+    Parameters
+    ----------
+    pm_ : instance of PatchMatch
+    mask : array-like, shape (m, n)
+        only vectors whose "roots" are on pixels for wich mask is non-zero will be plotted
+    step : int
+        step between two plotted vectors
+    **kwargs : keyword arguments
+        keyword arguments to be passed to plt.arrow (e.g. head_width, head_length, ...)
+    """
     default_kwargs = {"width": 1e-3, "head_width": 1, "head_length": 1.5, "length_includes_head": True}
     default_kwargs.update(kwargs)
     plt.imshow(pm_.im.astype("uint8"))
