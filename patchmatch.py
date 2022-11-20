@@ -8,6 +8,7 @@ T : int : inferior limit for the infinite norm of displacements vectors
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 from numba.experimental import jitclass
 from numba import int64, float64
 
@@ -158,19 +159,35 @@ class PatchMatch:
         for i in range(p, m-p):
             for j in range(p, n-p):
                 for k in range(self.L):
-                    x, y = self.vect_field[i,j]
-                    x_ = np.random.randint(np.max(x-2**(k-1),p), np.min(x+2**(k-1)+1,m-p))
-                    y_ = np.random.randint(np.max(y-2**(k-1),p), np.min(y+2**(k-1)+1,m-p))
-                    if self.test_min_separation(x_,y_):
-                        d_init = self.dist_field[i,j]
-                        d_test = self.dist(i,j,i+x_,j+y_)
+                    di, dj = self.vect_field[i, j]
+                    di_ = np.random.randint(max(i + di - 2**(k - 1), p) - i, min(i + di + 2**(k - 1) + 1, m - p) - i)
+                    dj_ = np.random.randint(max(j + dj - 2**(k - 1), p) - j, min(j + dj + 2**(k - 1) + 1, n - p) - j)
+                    if self.test_min_separation(di_, dj_):
+                        d_init = self.dist_field[i, j]
+                        d_test = self.dist(i, j, i + di_, j + dj_)
                         if d_test < d_init:
-                            self.vect_field[i,j] = np.array([x_,y_])
+                            self.vect_field[i, j] = np.array([di_, dj_])
 
 
     def run(self):
         """Run the PatchMatch algorithm and return the resulting vector field."""
-        for _ in range(2*self.N):
+        for _ in range(self.N):
             self.scan()
             self.flip()
+            self.scan()
+            self.flip()
+            self.random_search()
         return self.vect_field
+
+
+
+def plot_vect_field(pm_, mask, step=100, **kwargs):
+    """Plot vect_field as arrows above the image"""
+    default_kwargs = {"width": 1e-3, "head_width": 1, "head_length": 1.5, "length_includes_head": True}
+    default_kwargs.update(kwargs)
+    plt.imshow(pm_.im.astype("uint8"))
+    for i in range(0, pm_.m, step):  # for each pixel in the mask
+        for j in range(0, pm_.n, step):
+            if mask[i, j] > 0:
+                plt.arrow(j, i, *pm_.vect_field[i, j, ::-1], **default_kwargs)
+    plt.show()
