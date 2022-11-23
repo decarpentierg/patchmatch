@@ -22,11 +22,12 @@ spec = [
     ("p", int64),
     ("N", int64),
     ("L", int64),
+    ("cnt", int64),
     ("vect_field", int64[:, :, :]),
     ("dist_field", float64[:, :])
 ]
 
-# @jitclass(spec)
+@jitclass(spec)
 class PatchMatch:
     def __init__(self, im, T, p, N, L):
         """
@@ -51,6 +52,7 @@ class PatchMatch:
         self.p = p
         self.N = N
         self.L = L
+        self.cnt = 0  # to measure the utility of the random search
         self.create_vect_field2()
         self.create_dist_field()
 
@@ -133,7 +135,7 @@ class PatchMatch:
         """Return patch centered at (i, j)."""
         p = self.p
         return self.im[i-p:i+p+1, j-p:j+p+1]
-        
+    
     
     def dist(self, i, j, k, l):
         """Return l2 distance between patch centered at (i, j) and patch centered at (k, l)."""
@@ -150,7 +152,8 @@ class PatchMatch:
     def test_min_separation(self, x, y):
         """Test if the displacement with the vector (x,y) is bigger in infinite norm than T"""
         T = self.T
-        return (np.abs(x)>=T and np.abs(y)>=T)
+        return (np.abs(x)>=T or np.abs(y)>=T)
+
 
     def scan(self):
         """Run a raster scan over the image and propagate displacement vectors."""
@@ -184,6 +187,7 @@ class PatchMatch:
         """Flip image and vector field."""
         self.im = self.im[::-1, ::-1]
         self.vect_field = -self.vect_field[::-1, ::-1]
+        self.dist_field = self.dist_field[::-1, ::-1]
 
 
     def random_search(self):
@@ -199,17 +203,21 @@ class PatchMatch:
                         d_init = self.dist_field[i, j]
                         d_test = self.dist(i, j, i + di_, j + dj_)
                         if d_test < d_init:
+                            self.cnt += 1
                             self.vect_field[i, j] = np.array([di_, dj_])
+    
 
+    def iterate(self):
+        for _ in range(2):
+            self.scan()
+            self.flip()
+            self.random_search()
+    
 
     def run(self):
         """Run the PatchMatch algorithm and return the resulting vector field."""
         for _ in range(self.N):
-            self.scan()
-            self.flip()
-            self.scan()
-            self.flip()
-            self.random_search()
+            self.iterate()
         return self.vect_field
 
 
