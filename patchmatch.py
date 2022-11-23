@@ -26,7 +26,7 @@ spec = [
     ("dist_field", float64[:, :])
 ]
 
-@jitclass(spec)
+# @jitclass(spec)
 class PatchMatch:
     def __init__(self, im, T, p, N, L):
         """
@@ -51,7 +51,7 @@ class PatchMatch:
         self.p = p
         self.N = N
         self.L = L
-        self.create_vect_field()
+        self.create_vect_field2()
         self.create_dist_field()
 
 
@@ -59,11 +59,10 @@ class PatchMatch:
         """
         Create a random vect_field where every vector are biger than T in infinite norm  
 
-        vect_field : array-like, shape (m, n, 3)
+        vect_field : array-like, shape (m, n, 2)
             Field of displacement vectors for each pixel. 
             vect_field[i,j,0] is the x coordonate of the displacement vector. 
             vect_field[i,j,1] is the y coordonate of the displacement vector. 
-            vect_field[i,j,2] is the distance between the patch and the moved patch.
         """
         m, n, p = self.m, self.n, self.p
         self.vect_field = np.zeros((m, n, 2), dtype=np.int64)
@@ -84,6 +83,40 @@ class PatchMatch:
         pos = np.zeros((m, n, 2), dtype=np.int64)
         pos[:, :, 0] = np.arange(m).reshape((m, 1))
         pos[:, :, 1] = np.arange(n).reshape((1, n))
+        self.vect_field = self.vect_field - pos
+    
+
+    def create_vect_field2(self):
+        """
+        Create a random vect_field where every vector are biger than T in infinite norm  
+
+        vect_field : array-like, shape (m, n, 2)
+            Field of displacement vectors for each pixel. 
+            vect_field[i,j,0] is the x coordonate of the displacement vector. 
+            vect_field[i,j,1] is the y coordonate of the displacement vector. 
+        """
+        m, n, p = self.m, self.n, self.p
+
+        # compute the displacement vectors
+        pos = np.zeros((m, n, 2), dtype=np.int64)
+        pos[:, :, 0] = np.arange(m).reshape((m, 1))
+        pos[:, :, 1] = np.arange(n).reshape((1, n))
+
+        self.vect_field = np.zeros((m, n, 2), dtype=np.int64)
+        self.vect_field[..., 0] = np.random.randint(low=p, high=m-p, size=(m, n))
+        self.vect_field[..., 1] = np.random.randint(low=p, high=n-p, size=(m, n))
+
+        diff = np.abs(self.vect_field - pos)
+        to_small = np.maximum(diff[..., 0], diff[..., 1]) < self.T  # kwarg axis for np.max is not supported in numba???
+        while np.any(to_small):  # resample the displacement vectors until they match the condition
+            for i in range(m):
+                for j in range(n):
+                    if to_small[i, j]:
+                        self.vect_field[i, j, 0] =  np.random.randint(low=p, high=m-p)
+                        self.vect_field[i, j, 1] =  np.random.randint(low=p, high=n-p)
+            diff = np.abs(self.vect_field - pos)
+            to_small = np.maximum(diff[..., 0], diff[..., 1]) < self.T  # kwarg axis for np.max is not supported in numba???
+        
         self.vect_field = self.vect_field - pos
 
 
@@ -197,6 +230,7 @@ def plot_vect_field(pm_, mask, step=100, **kwargs):
     """
     default_kwargs = {"width": 1e-3, "head_width": 1, "head_length": 1.5, "length_includes_head": True}
     default_kwargs.update(kwargs)
+    default_kwargs["head_length"] = 1.5 * default_kwargs["head_width"]
     plt.imshow(pm_.im.astype("uint8"))
     for i in range(0, pm_.m, step):  # for each pixel in the mask
         for j in range(0, pm_.n, step):
