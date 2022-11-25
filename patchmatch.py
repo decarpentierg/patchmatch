@@ -3,14 +3,18 @@ m : image height
 n : image length
 p : 2*p+1 is the patch length
 im : numpy array of float of size (m,n,3) : the image
-vect_field : numpy array of size (m,n,3) : field of displacement vector for each pixel + distance to the matched patch
+vect_field : numpy array of size (m,n,2) : field of displacement vector for each pixel
+dist_field : numpy array of size (m,n,1) : distance between a patch (center in this pixel) and the patch obtain after the displacement encoded in vect_field
 T : int : inferior limit for the infinite norm of displacements vectors
+N : int : number of iteration in patchmatch algorithm
+cnt : int : number of change in vect_field for one scan
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 from numba.experimental import jitclass
-from numba import int64, float64
+from numba import int64, float64, types
+from tqdm import tqdm
 
 np.random.seed(0)
 
@@ -22,13 +26,15 @@ spec = [
     ("p", int64),
     ("N", int64),
     ("L", int64),
-    ("cnt", int64),
+    ("cnt",int64),
     ("vect_field", int64[:, :, :]),
     ("dist_field", float64[:, :])
 ]
 
+
 @jitclass(spec)
 class PatchMatch:
+
     def __init__(self, im, T, p, N, L):
         """
         Instantiate the PatchMatch algorithm 
@@ -52,10 +58,9 @@ class PatchMatch:
         self.p = p
         self.N = N
         self.L = L
-        self.cnt = 0  # to measure the utility of the random search
+        self.cnt = 0  # number of change in vect_field for each scan
         self.create_vect_field2()
         self.create_dist_field()
-
 
     def create_vect_field(self):
         """
@@ -70,19 +75,21 @@ class PatchMatch:
         self.vect_field = np.zeros((m, n, 2), dtype=np.int64)
 
         # generate the target point with the constraint T
-        # i coordinate
-        I = np.arange(p, m-p)
-        for i in range(m):
-        for j in range(n):
-            idx = np.where(np.abs(J-j) >= self.T)
-            self.vect_field[:,j,1] = np.random.choice(J[idx], m)
+        # x coordinate
+        self.vect_field[:,:,0] = np.random.randint(p+1,m-p,size=(m,n), dtype = np.int64) - np.arange(m, dtype = np.int64)[:,None]
 
-        #compute the displacement vectors
-        pos = np.zeros((m, n, 2), dtype=np.int64)
-        pos[:, :, 0] = np.arange(m).reshape((m, 1))
-        pos[:, :, 1] = np.arange(n).reshape((1, n))
-        self.vect_field = self.vect_field - pos
-    
+        # y coordinate
+        for i in range(m):
+            for j in range(n):
+                if np.abs(self.vect_field[i,j,0]) > self.T:
+                    self.vect_field[i,j,1] = np.random.randint(p+1,n-p)
+                else:
+                    #research in constant time of an j which assure that the vector is bigger in infinite norm than self.T
+                    alea = np.random.randint(p+1,n-p-2*self.T-1)
+                    if j-self.T > p and alea < j-self.T:
+                        self.vect_field[i,j,1] = alea-j
+                    else:
+                        self.vect_field[i,j,1] = alea+2*self.T+1-j
 
     def create_vect_field2(self):
         """
@@ -119,7 +126,9 @@ class PatchMatch:
 
 
     def create_dist_field(self):
-        # Compute the distances between a patch and its matched patch
+        """
+        Compute the distances between a patch and its matched patch with the current displacement vector in self.vect_field
+        """
         m, n, p = self.m, self.n, self.p
         self.dist_field = np.zeros((m, n), dtype=np.float64)
         for i in range(p, m-p):
@@ -174,9 +183,12 @@ class PatchMatch:
                 if idx == 1:
                     self.vect_field[i, j] = self.vect_field[i-1, j]
                     self.dist_field[i, j] = d_up
+                    self.cnt +=1
                 if idx == 2:
                     self.vect_field[i, j] = self.vect_field[i, j-1]
                     self.dist_field[i, j] = d_left
+                    self.cnt +=1
+        
     
 
     def flip(self):
@@ -205,15 +217,16 @@ class PatchMatch:
 
     def iterate(self):
         for _ in range(2):
+            self.cnt = 0
             self.scan()
             self.random_search()
-    
+            print(self.cnt)
+            self.flip()
 
     def run(self):
         """Run the PatchMatch algorithm and return the resulting vector field."""
         for _ in range(self.N):
             self.iterate()
-        return self.vect_field
 
 
 def plot_vect_field(pm_, mask, step=100, **kwargs):
