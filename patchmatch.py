@@ -73,10 +73,6 @@ class PatchMatch:
         # i coordinate
         I = np.arange(p, m-p)
         for i in range(m):
-            idx = np.where(np.abs(I-i) >= self.T)
-            self.vect_field[i,:,0] = np.random.choice(I[idx], n)
-        # j coordinate
-        J = np.arange(p, n-p)
         for j in range(n):
             idx = np.where(np.abs(J-j) >= self.T)
             self.vect_field[:,j,1] = np.random.choice(J[idx], m)
@@ -210,7 +206,6 @@ class PatchMatch:
     def iterate(self):
         for _ in range(2):
             self.scan()
-            self.flip()
             self.random_search()
     
 
@@ -219,7 +214,6 @@ class PatchMatch:
         for _ in range(self.N):
             self.iterate()
         return self.vect_field
-
 
 
 def plot_vect_field(pm_, mask, step=100, **kwargs):
