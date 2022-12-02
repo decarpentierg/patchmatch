@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from numba.experimental import jitclass
 from numba import int64, float64, types
 from tqdm import tqdm
+from mahotas.features import zernike_moments
 
 np.random.seed(0)
 
@@ -147,11 +148,20 @@ class PatchMatch:
         # print(i, j, k, l)
         return np.sqrt(np.sum((self.patch(i, j) - self.patch(k, l))**2))
     
+    def dist_zernike(self, i, j, k, l):
+        """Return l2 distance between zernike moment of patch centered at (i, j) and patch centered at (k, l) and of radius self.p.
+
+        zernike_moments are computed on a circle of radius radius centered around center of mass. 
+        Returns a vector of absolute Zernike moments through degree for the image im.
+        """
+        zvalues_1 = zernike_moments(im = self.patch(i,j), radius = self.p, degree = self.p)
+        zvalues_2 = zernike_moments(im = self.patch(k,l), radius = self.p, degree = self.p)
+        return np.sqrt(np.sum((zvalues_1 - zvalues_2)**2))
 
     def dist2candidate(self, i, j, k, l):
         """Evaluate the displacement of (k, l) as a potential displacement for (i, j) and return the associated distance."""
         dk, dl = self.vect_field[k, l]
-        return self.dist(i, j, i+dk, j+dl)
+        return self.dist_zernike(i, j, i+dk, j+dl)
     
 
     def test_min_separation(self, x, y):
@@ -215,11 +225,22 @@ class PatchMatch:
                             self.vect_field[i, j] = np.array([di_, dj_])
     
 
+    def symetry(self):
+        """Assure the symetry of the vect_field map"""
+        m, n = self.m, self.n
+        for i in range(m):
+            for j in range(n):
+                di, dj = self.vect_field[i, j]
+                if self.dist_field[i+di, j+dj] > self.dist_field[i,j]:
+                    self.vect_field[i+di,j+dj] = -self.vect_field[i,j]
+                    self.dist_field[i+di,j+dj] = self.dist_field[i,j]
+
     def iterate(self):
         for _ in range(2):
             self.cnt = 0
             self.scan()
             self.random_search()
+            self.symetry()
             print(self.cnt)
             self.flip()
 
