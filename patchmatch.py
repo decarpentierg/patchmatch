@@ -176,8 +176,8 @@ class PatchMatch:
         distance = 0
         for u in range(self.p):
             for v in range(-u,u+1,2):
-                Z_1 = unique_zernike_moment(self, i, j, self.p, u, v)
-                Z_2 = unique_zernike_moment(self, k, l, self.p, u, v)
+                Z_1 = self.unique_zernike_moment(self, i, j, self.p, u, v)
+                Z_2 = self.unique_zernike_moment(self, k, l, self.p, u, v)
                 distance += (Z_1-Z_2)**2
         return np.sqrt(distance)
 
