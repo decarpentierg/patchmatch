@@ -16,6 +16,7 @@ from numba.experimental import jitclass
 from numba import int64, float64, types
 from tqdm import tqdm
 from mahotas.features import zernike_moments
+from scipy.special import factorial
 
 np.random.seed(0)
 
@@ -60,7 +61,7 @@ class PatchMatch:
         self.N = N
         self.L = L
         self.cnt = 0  # number of change in vect_field for each scan
-        self.create_vect_field2()
+        self.create_vect_field()
         self.create_dist_field()
 
     def create_vect_field(self):
@@ -148,20 +149,42 @@ class PatchMatch:
         # print(i, j, k, l)
         return np.sqrt(np.sum((self.patch(i, j) - self.patch(k, l))**2))
     
+
+    def unique_zernike_moment(self, i, j, p, u, v):
+        """
+        Compute the Zernike moment of order u, v for the patch of size (2*p+1,2*p+1) center in (i,j). Compute base on the paper 
+        A. Tahmasbi, F. Saki, and S. B. Shokouhi. Classification of benign and malignant masses based on Zernike moments. Comput. Biol. Med., 41(8):726–735, 2011
+        """
+        Z = 0
+        for x in range(-p,p+1):
+            for y in range(-p,p+1):
+                rho = np.sqrt((2*(x+i)-(2*p+1)+1)**2+(2*(y+j)-(2*p+1)+1)**2)/(2*p+1)
+                theta = np.arctan((2*p-2*x)/(2*y-2*p))
+                R = 0
+                for s in range((u-np.abs(v))//2+1):
+                    R += (-1)**s * factorial(u-s) * rho**(u-2*s) /(factorial(s)*factorial((u+np.abs(v))//2-s)*factorial((u-np.abs(v))//2-s))
+                Z += (u+1)*self.im[x+i,y+j]*R*np.exp(-1j * v * theta)
+        return Z
+
+
     def dist_zernike(self, i, j, k, l):
         """Return l2 distance between zernike moment of patch centered at (i, j) and patch centered at (k, l) and of radius self.p.
 
         zernike_moments are computed on a circle of radius radius centered around center of mass. 
         Returns a vector of absolute Zernike moments through degree for the image im.
         """
-        zvalues_1 = zernike_moments(im = self.patch(i,j), radius = self.p, degree = self.p)
-        zvalues_2 = zernike_moments(im = self.patch(k,l), radius = self.p, degree = self.p)
-        return np.sqrt(np.sum((zvalues_1 - zvalues_2)**2))
+        distance = 0
+        for u in range(self.p):
+            for v in range(-u,u+1,2):
+                Z_1 = unique_zernike_moment(self, i, j, self.p, u, v)
+                Z_2 = unique_zernike_moment(self, k, l, self.p, u, v)
+                distance += (Z_1-Z_2)**2
+        return np.sqrt(distance)
 
     def dist2candidate(self, i, j, k, l):
         """Evaluate the displacement of (k, l) as a potential displacement for (i, j) and return the associated distance."""
         dk, dl = self.vect_field[k, l]
-        return self.dist_zernike(i, j, i+dk, j+dl)
+        return self.dist(i, j, i+dk, j+dl)
     
 
     def test_min_separation(self, x, y):
