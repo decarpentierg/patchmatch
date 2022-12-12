@@ -1,21 +1,7 @@
-"""
-m : image height
-n : image length
-p : 2*p+1 is the patch length
-im : numpy array of float of size (m,n,3) : the image
-vect_field : numpy array of size (m,n,2) : field of displacement vector for each pixel
-dist_field : numpy array of size (m,n,1) : distance between a patch (center in this pixel) and the patch obtain after the displacement encoded in vect_field
-T : int : inferior limit for the infinite norm of displacements vectors
-N : int : number of iteration in patchmatch algorithm
-cnt : int : number of change in vect_field for one scan
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 from numba.experimental import jitclass
-from numba import int64, float64, types
-from tqdm import tqdm
-from mahotas.features import zernike_moments
+from numba import int64, float64
 from scipy.special import factorial
 
 np.random.seed(0)
@@ -24,8 +10,8 @@ spec = [
     ("im", float64[:, :, :]),
     ("m", int64),
     ("n", int64),
-    ("T", int64),
     ("p", int64),
+    ("T", int64),
     ("N", int64),
     ("L", int64),
     ("cnt",int64),
@@ -36,136 +22,195 @@ spec = [
 
 @jitclass(spec)
 class PatchMatch:
+    """
+    Class to implement the PatchMatch algorithm.
 
-    def __init__(self, im, T, p, N, L):
+    Attributes
+    ----------
+    im : array-like, shape (m, n, 3)
+        image
+    m : int
+        image height
+    n : int
+        image length
+    p : int
+        half size of patches, i.e. patches have shape (2p+1, 2p+1, 3)
+    vect_field : array-like, shape (m, n, 2)
+        displacement field, = one displacement vector for each pixel
+        vect_field[i, j, 0] is the i coordinate of the displacement vector
+        vect_field[i, j, 1] is the j coordinate of the displacement vector
+    dist_field : array-like, shape (m,n)
+        dist_field[i, j] is the 'distance' between the patch centered at (i, j) and its 'favorite' (see glossary).
+    T : int
+        lower bound imposed on the infinite norm of displacement vectors
+    N : int
+        number of iterations in the PatchMatch algorithm
+    L : int
+        number of candidates in the random search phase
+        We choose L new candidates randomely in squares of size 2**(i-1), 1 <= i <= L.
+    cnt : int
+        used to record the number of changes in vect_field during a single scan of PatchMatch
+
+    Glossary
+    --------
+    *   'Inner image': image[p:m - p, p:n - p], i.e. pixels of the image that are the center of a patch included in the image.
+    *   A 'displacement vector' (di, dj) maps a 'start point' (i, j) to an 'end point' (i2, j2)=(i + di, j + dj).
+            Both the start and the end point must be in the inner image.
+    *   'Admissible values' for a displacement vector associated to start point (i, j) are the values that maps it to an end point
+            in the inner image.
+    *   If a patch P1 is mapped to a patch P2 via the displacement field, P2 is called the 'favorite' of P1.
+    *   The 'ground distance' between two patches is the distance between their centers along the image.
+    *   The 'distance' between two patches is their distance in the metric space of patches.
+    """
+
+
+    def __init__(self, im, p, T, N, L):
         """
-        Instantiate the PatchMatch algorithm 
+        Instantiates the PatchMatch algorithm.
         
         Parameters
         ----------
-        im : array-like, shape (m, n, 3)
-            image
-        T : int
-            inferior limit for the infinite norm of displacements vectors
-        p : int
-            a patch is a shape (2*p+1,2*p+1)
-        N : int
-            number of iteration in the PatchMatch algorithm
-        L : int
-            number of candidate in the random search phase. We choose L new candidates randomely in square of size 2**(i-1) (i \in [1,L])
+        See class documentation.
         """
         self.im = im
         self.m, self.n, _ = im.shape
-        self.T = T
         self.p = p
+        assert min(self.m, self.n) >= 2 * self.p + 1, "At least one full patch must be contained in the image."
+        self.T = T
         self.N = N
         self.L = L
         self.cnt = 0  # number of change in vect_field for each scan
-        self.create_vect_field()
+        self.create_vect_field1()
         self.create_dist_field()
+    
+    # -----------------------------------
+    # vect_field initialization functions
+    # -----------------------------------
+    # Following functions sample a new random displacement field and assign it to self.vect_field. Several methods are available.
 
-    def create_vect_field(self):
+    def create_vect_field1(self):
         """
-        Create a random vect_field where every vector are biger than T in infinite norm  
-
-        vect_field : array-like, shape (m, n, 2)
-            Field of displacement vectors for each pixel. 
-            vect_field[i,j,0] is the x coordonate of the displacement vector. 
-            vect_field[i,j,1] is the y coordonate of the displacement vector. 
+        Assigns a new random displacement field to self.vect_field.
+        1st method: 
+            For each pixel of the inner image:
+            *   Sample the di coordinate of the displacement vector randomly with a uniform distribution among admissible values.
+            *   If |di| >= T, sample the dj coordinate randomly with a uniform distribution among all admissible values.
+            *   Else, sample the dj coordinate randomly with a uniform distribution among admissible values s.t. |dj| >= T.
         """
         m, n, p = self.m, self.n, self.p
-        self.vect_field = np.zeros((m, n, 2), dtype=np.int64)
+        end_points = np.zeros((m, n, 2), dtype=np.int64)
 
-        # generate the target point with the constraint T
-        # x coordinate
-        self.vect_field[:,:,0] = np.random.randint(p+1,m-p,size=(m,n), dtype = np.int64) - np.arange(m, dtype = np.int64)[:,None]
+        # coordinates of start points (=meshgrid)
+        start_points = np.zeros((m, n, 2), dtype=np.int64)
+        start_points[:, :, 0] = np.arange(m).reshape((m, 1))
+        start_points[:, :, 1] = np.arange(n).reshape((1, n))
+        end_points[:, :, :] = start_points  # set all displacement vectors to 0 (because vect_field = end_points - start_points)
 
-        # y coordinate
-        for i in range(m):
-            for j in range(n):
-                if np.abs(self.vect_field[i,j,0]) > self.T:
-                    self.vect_field[i,j,1] = np.random.randint(p+1,n-p)
-                else:
-                    #research in constant time of an j which assure that the vector is bigger in infinite norm than self.T
-                    alea = np.random.randint(p+1,n-p-2*self.T-1)
-                    if j-self.T > p and alea < j-self.T:
-                        self.vect_field[i,j,1] = alea-j
-                    else:
-                        self.vect_field[i,j,1] = alea+2*self.T+1-j
+        # sample i2 coordinates for start points in the inner image
+        end_points[p:m - p, p:n - p, 0] = np.random.randint(low=p, high=m - p, size=(m - 2 * p - 1, n - 2 * p - 1))
+
+        # sample j2 coordinates for start points in the inner image
+        for i in range(p, m - p):
+            for j in range(p, n - p):
+                if np.abs(end_points[i, j, 0] - i) >= self.T:  # if |di| >= T, sample dj among all admissible values
+                    end_points[i, j, 1] = np.random.randint(low=p, high=n - p)
+                else:  # else, sample dj among admissible values s.t. |dj| >= T
+                    left = max(0, j - self.T - p + 1)  # number of admissible j2 coordinates s.t. j2 < j
+                    right = max(0, n - j - self.T - p)  # number of admissible j2 coordinates s.t. j2 > j
+                    alea = np.random.randint(low=0, high=left + right)
+                    if alea < left:  # j2 < j
+                        end_points[i, j, 1] = p + alea
+                    else:  # j2 > j
+                        end_points[i, j, 1] = n - p - 1 - (alea - left)
+        
+        self.vect_field = end_points - start_points  # displacement vectors
 
     def create_vect_field2(self):
         """
-        Create a random vect_field where every vector are biger than T in infinite norm  
-
-        vect_field : array-like, shape (m, n, 2)
-            Field of displacement vectors for each pixel. 
-            vect_field[i,j,0] is the x coordonate of the displacement vector. 
-            vect_field[i,j,1] is the y coordonate of the displacement vector. 
+        Assigns a new random displacement field to self.vect_field.
+        2nd method: Resample displacement vectors that don't satisfy the condition on the infinite norm until all of them do.
         """
         m, n, p = self.m, self.n, self.p
+        end_points = np.zeros((m, n, 2), dtype=np.int64)
 
-        # compute the displacement vectors
-        pos = np.zeros((m, n, 2), dtype=np.int64)
-        pos[:, :, 0] = np.arange(m).reshape((m, 1))
-        pos[:, :, 1] = np.arange(n).reshape((1, n))
+        # coordinates of start points (=meshgrid)
+        start_points = np.zeros((m, n, 2), dtype=np.int64)
+        start_points[:, :, 0] = np.arange(m).reshape((m, 1))
+        start_points[:, :, 1] = np.arange(n).reshape((1, n))
+        end_points[:, :, :] = start_points  # set all displacement vectors to 0 (because vect_field = end_points - start_points)
 
-        self.vect_field = np.zeros((m, n, 2), dtype=np.int64)
-        self.vect_field[..., 0] = np.random.randint(low=p, high=m-p, size=(m, n))
-        self.vect_field[..., 1] = np.random.randint(low=p, high=n-p, size=(m, n))
+        # sample end_points
+        end_points[p:m - p, p:n - p, 0] = np.random.randint(low=p, high=m - p, size=(m - 2 * p - 1, n - 2 * p - 1))
+        end_points[p:m - p, p:n - p, 1] = np.random.randint(low=p, high=n - p, size=(m - 2 * p - 1, n - 2 * p - 1))
 
-        diff = np.abs(self.vect_field - pos)
+        # enforce condition on the infinite norm of the displacement vectors by resampling the vectors that don't satisfy
+        # the condition, until all of them do.
+        diff = np.abs(end_points - start_points)  # absolute values of displacement vectors coordinates
         to_small = np.maximum(diff[..., 0], diff[..., 1]) < self.T  # kwarg axis for np.max is not supported in numba???
         while np.any(to_small):  # resample the displacement vectors until they match the condition
-            for i in range(m):
-                for j in range(n):
+            for i in range(p, m - p):
+                for j in range(p, n - p):
                     if to_small[i, j]:
-                        self.vect_field[i, j, 0] =  np.random.randint(low=p, high=m-p)
-                        self.vect_field[i, j, 1] =  np.random.randint(low=p, high=n-p)
-            diff = np.abs(self.vect_field - pos)
-            to_small = np.maximum(diff[..., 0], diff[..., 1]) < self.T  # kwarg axis for np.max is not supported in numba???
+                        end_points[i, j, 0] =  np.random.randint(low=p, high=m - p)
+                        end_points[i, j, 1] =  np.random.randint(low=p, high=n - p)
+            diff = np.abs(end_points - start_points)
+            to_small = np.maximum(diff[..., 0], diff[..., 1]) < self.T  # kwarg axis of np.max is not supported in numba???
         
-        self.vect_field = self.vect_field - pos
+        self.vect_field = end_points - start_points  # displacement vectors
 
+    # -----------------------------------
+    # dist_field initialization functions
+    # -----------------------------------
 
     def create_dist_field(self):
-        """
-        Compute the distances between a patch and its matched patch with the current displacement vector in self.vect_field
-        """
+        """Create an array of the distances of the patches to their favorites and assign it to self.dist_field."""
         m, n, p = self.m, self.n, self.p
         self.dist_field = np.zeros((m, n), dtype=np.float64)
-        for i in range(p, m-p):
-            for j in range(p, n-p):
-                self.dist_field[i,j] = self.dist2candidate(i, j, i, j)
+        for i in range(p, m - p):
+            for j in range(p, n - p):
+                self.dist_field[i, j] = self.dist2candidate(i, j, i, j)
 
+    # --------------------
+    # patch-wise functions
+    # --------------------
 
     def patch(self, i, j):
         """Return patch centered at (i, j)."""
         p = self.p
-        return self.im[i-p:i+p+1, j-p:j+p+1]
-    
+        return self.im[i - p:i + p + 1, j - p:j + p + 1]
     
     def dist(self, i, j, k, l):
         """Return l2 distance between patch centered at (i, j) and patch centered at (k, l)."""
-        # print(i, j, k, l)
         return np.sqrt(np.sum((self.patch(i, j) - self.patch(k, l))**2))
-    
 
+    def dist2candidate(self, i, j, k, l):
+        """Evaluate the displacement of (k, l) as a potential displacement for (i, j) and return the associated distance."""
+        dk, dl = self.vect_field[k, l]
+        return self.dist(i, j, i + dk, j + dl)
+    
+    def test_min_separation(self, di, dj):
+        """Test the condition ||(di, dj)||_infty >= T"""
+        return np.abs(di) >= self.T or np.abs(dj) >= self.T
+
+    # Zernike moments
+    
     def unique_zernike_moment(self, i, j, p, u, v):
         """
         Compute the Zernike moment of order u, v for the patch of size (2*p+1,2*p+1) center in (i,j). Compute base on the paper 
-        A. Tahmasbi, F. Saki, and S. B. Shokouhi. Classification of benign and malignant masses based on Zernike moments. Comput. Biol. Med., 41(8):726–735, 2011
+        A. Tahmasbi, F. Saki, and S. B. Shokouhi. Classification of benign and malignant masses based on Zernike moments. 
+            Comput. Biol. Med., 41(8):726-735, 2011
         """
         Z = 0
-        for x in range(-p,p+1):
-            for y in range(-p,p+1):
-                rho = np.sqrt((2*(x+i)-(2*p+1)+1)**2+(2*(y+j)-(2*p+1)+1)**2)/(2*p+1)
-                theta = np.arctan((2*p-2*x)/(2*y-2*p))
+        for x in range(-p, p + 1):
+            for y in range(-p, p + 1):
+                rho = np.sqrt((2 * (x + i) - (2 * p + 1) + 1)**2 + (2 * (y + j) - (2 * p + 1) + 1)**2) / (2 * p + 1)
+                theta = np.arctan((2 * p - 2 * x) / (2 * y - 2 * p))
                 R = 0
-                for s in range((u-np.abs(v))//2+1):
-                    R += (-1)**s * factorial(u-s) * rho**(u-2*s) /(factorial(s)*factorial((u+np.abs(v))//2-s)*factorial((u-np.abs(v))//2-s))
-                Z += (u+1)*self.im[x+i,y+j]*R*np.exp(-1j * v * theta)
+                for s in range((u- np.abs(v)) // 2 + 1):
+                    denom = factorial(s) * factorial((u + np.abs(v)) // 2 - s) * factorial((u - np.abs(v)) // 2 - s)
+                    R += (-1)**s * factorial(u - s) * rho**(u - 2 * s) / denom
+                Z += (u + 1) * self.im[x + i, y + j] * R * np.exp(-1j * v * theta)
         return Z
-
 
     def dist_zernike(self, i, j, k, l):
         """Return l2 distance between zernike moment of patch centered at (i, j) and patch centered at (k, l) and of radius self.p.
@@ -181,17 +226,9 @@ class PatchMatch:
                 distance += (Z_1-Z_2)**2
         return np.sqrt(distance)
 
-    def dist2candidate(self, i, j, k, l):
-        """Evaluate the displacement of (k, l) as a potential displacement for (i, j) and return the associated distance."""
-        dk, dl = self.vect_field[k, l]
-        return self.dist(i, j, i+dk, j+dl)
-    
-
-    def test_min_separation(self, x, y):
-        """Test if the displacement with the vector (x,y) is bigger in infinite norm than T"""
-        T = self.T
-        return (np.abs(x)>=T or np.abs(y)>=T)
-
+    # --------------------
+    # PatchMatch algorithm
+    # --------------------
 
     def scan(self):
         """Run a raster scan over the image and propagate displacement vectors."""
@@ -221,15 +258,12 @@ class PatchMatch:
                     self.vect_field[i, j] = self.vect_field[i, j-1]
                     self.dist_field[i, j] = d_left
                     self.cnt +=1
-        
-    
 
     def flip(self):
         """Flip image and vector field."""
         self.im = self.im[::-1, ::-1]
         self.vect_field = -self.vect_field[::-1, ::-1]
         self.dist_field = self.dist_field[::-1, ::-1]
-
 
     def random_search(self):
         """Function to make the random search"""
@@ -247,7 +281,6 @@ class PatchMatch:
                             self.cnt += 1
                             self.vect_field[i, j] = np.array([di_, dj_])
     
-
     def symetry(self):
         """Assure the symetry of the vect_field map"""
         m, n = self.m, self.n
