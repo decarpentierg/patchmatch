@@ -107,7 +107,7 @@ class PatchMatch:
         end_points[:, :, :] = start_points  # set all displacement vectors to 0 (because vect_field = end_points - start_points)
 
         # sample i2 coordinates for start points in the inner image
-        end_points[p:m - p, p:n - p, 0] = np.random.randint(low=p, high=m - p, size=(m - 2 * p - 1, n - 2 * p - 1))
+        end_points[p:m - p, p:n - p, 0] = np.random.randint(low=p, high=m - p, size=(m - 2 * p, n - 2 * p))
 
         # sample j2 coordinates for start points in the inner image
         for i in range(p, m - p):
@@ -140,8 +140,8 @@ class PatchMatch:
         end_points[:, :, :] = start_points  # set all displacement vectors to 0 (because vect_field = end_points - start_points)
 
         # sample end_points
-        end_points[p:m - p, p:n - p, 0] = np.random.randint(low=p, high=m - p, size=(m - 2 * p - 1, n - 2 * p - 1))
-        end_points[p:m - p, p:n - p, 1] = np.random.randint(low=p, high=n - p, size=(m - 2 * p - 1, n - 2 * p - 1))
+        end_points[p:m - p, p:n - p, 0] = np.random.randint(low=p, high=m - p, size=(m - 2 * p, n - 2 * p))
+        end_points[p:m - p, p:n - p, 1] = np.random.randint(low=p, high=n - p, size=(m - 2 * p, n - 2 * p))
 
         # enforce condition on the infinite norm of the displacement vectors by resampling the vectors that don't satisfy
         # the condition, until all of them do.
