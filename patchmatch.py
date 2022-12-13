@@ -247,8 +247,39 @@ class PatchMatch:
                     d_left = self.dist2candidate(i, j, i, j-1)
                 else:
                     d_left = np.Inf
+                #end of order 0 in modified patchmatch
+                if i > p and j > p and i + self.vect_field[i-1, j-1, 0] + p < m and j + self.vect_field[i-1, j-1, 1] + p < n:
+                    d_upleft = self.dist2candidate(i, j, i-1, j-1)
+                else:
+                    d_upleft = np.Inf
+                if j > p and i + 1 + p < m and i + self.vect_field[i+1, j-1, 0] + p < m and j + self.vect_field[i+1, j-1, 1] + p < n:
+                    d_upright = self.dist2candidate(i, j, i+1, j-1)
+                else:
+                    d_upright = np.Inf
+                #order 1 in modified patchmatch
+                vect_order_1_upup = 2 * self.vect_field[i, j-1, :] - self.vect_field[i, j-2, :]
+                if j-1 > p and i + vect_order_1_upup[0]+p < m and j + vect_order_1_upup[1] + p < n:
+                    d_upup = self.dist2candidate(i, j, i+vect_order_1_upup[0], j+vect_order_1_upup[1])
+                else:
+                    d_upup = np.Inf
+                vect_order_1_rightright = 2 * self.vect_field[i+1, j-1, :] - self.vect_field[i+2, j-2, :]
+                if j-1 > p and i+2+p < m and i + vect_order_1_rightright[0] + p < m and j + vect_order_1_rightright[1] + p < n:
+                    d_rightright = self.dist2candidate(i, j, i+vect_order_1_rightright[0], j+vect_order_1_rightright[1])
+                else:
+                    d_rightright = np.Inf
+                vect_order_1_upleftleft = 2 * self.vect_field[i-1, j-1, :] - self.vect_field[i-2, j-2, :]
+                if j-1 > p and i-1 > p and i + vect_order_1_upleftleft[0] + p < m and j + vect_order_1_upleftleft[1] + p < n:
+                    d_upleftleft = self.dist2candidate(i, j, i+vect_order_1_upleftleft[0], j+vect_order_1_upleftleft[1])
+                else:
+                    d_upleftleft = np.Inf
+                vect_order_1_leftleft = 2 * self.vect_field[i-1, j, :] - self.vect_field[i-2, j, :]
+                if j > p and i-2 > p and i + vect_order_1_leftleft[0] + p < m and j + vect_order_1_leftleft[1] + p < n:
+                    d_leftleft = self.dist2candidate(i, j, i+vect_order_1_leftleft[0], j+vect_order_1_leftleft[1])
+                else:
+                    d_leftleft = np.Inf
+
                 # Compute best displacement
-                idx = np.argmin(np.array([d0, d_up, d_left], dtype=np.float64))
+                idx = np.argmin(np.array([d0, d_up, d_left, d_upleft, d_upright, d_upup, d_rightright, d_upleftleft, d_leftleft], dtype=np.float64))
                 # Propagate best displacement
                 if idx == 1:
                     self.vect_field[i, j] = self.vect_field[i-1, j]
@@ -257,6 +288,30 @@ class PatchMatch:
                 if idx == 2:
                     self.vect_field[i, j] = self.vect_field[i, j-1]
                     self.dist_field[i, j] = d_left
+                    self.cnt +=1
+                if idx == 3:
+                    self.vect_field[i, j] = self.vect_field[i-1, j-1]
+                    self.dist_field[i, j] = d_upleft
+                    self.cnt +=1
+                if idx == 4:
+                    self.vect_field[i, j] = self.vect_field[i+1, j-1]
+                    self.dist_field[i, j] = d_upright
+                    self.cnt +=1
+                if idx == 5:
+                    self.vect_field[i, j] = vect_order_1_upup
+                    self.dist_field[i, j] = d_upup
+                    self.cnt +=1
+                if idx == 6:
+                    self.vect_field[i, j] = vect_order_1_rightright
+                    self.dist_field[i, j] = d_rightright
+                    self.cnt +=1
+                if idx == 7:
+                    self.vect_field[i, j] = vect_order_1_upleftleft
+                    self.dist_field[i, j] = d_upleftleft
+                    self.cnt +=1
+                if idx == 8:
+                    self.vect_field[i, j] = vect_order_1_leftleft
+                    self.dist_field[i, j] = d_leftleft
                     self.cnt +=1
 
     def flip(self):
