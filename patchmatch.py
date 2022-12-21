@@ -20,7 +20,7 @@ spec = [
 ]
 
 
-@jitclass(spec)
+# @jitclass(spec)
 class PatchMatch:
     """
     Class to implement the PatchMatch algorithm.
@@ -80,7 +80,7 @@ class PatchMatch:
         self.N = N
         self.L = L
         self.cnt = 0  # number of change in vect_field for each scan
-        self.create_vect_field1()
+        self.create_vect_field2()
         self.create_dist_field()
     
     # -----------------------------------
@@ -137,22 +137,21 @@ class PatchMatch:
         start_points = np.zeros((m, n, 2), dtype=np.int64)
         start_points[:, :, 0] = np.arange(m).reshape((m, 1))
         start_points[:, :, 1] = np.arange(n).reshape((1, n))
-        end_points[:, :, :] = start_points  # set all displacement vectors to 0 (because vect_field = end_points - start_points)
 
         # sample end_points
-        end_points[p:m - p, p:n - p, 0] = np.random.randint(low=p, high=m - p, size=(m - 2 * p, n - 2 * p))
-        end_points[p:m - p, p:n - p, 1] = np.random.randint(low=p, high=n - p, size=(m - 2 * p, n - 2 * p))
+        end_points[:, :, 0] = np.random.randint(low=p, high=m - p, size=(m, n))
+        end_points[:, :, 1] = np.random.randint(low=p, high=n - p, size=(m, n))
 
         # enforce condition on the infinite norm of the displacement vectors by resampling the vectors that don't satisfy
         # the condition, until all of them do.
         diff = np.abs(end_points - start_points)  # absolute values of displacement vectors coordinates
         to_small = np.maximum(diff[..., 0], diff[..., 1]) < self.T  # kwarg axis for np.max is not supported in numba???
         while np.any(to_small):  # resample the displacement vectors until they match the condition
-            for i in range(p, m - p):
-                for j in range(p, n - p):
+            for i in range(m):
+                for j in range(n):
                     if to_small[i, j]:
-                        end_points[i, j, 0] =  np.random.randint(low=p, high=m - p)
-                        end_points[i, j, 1] =  np.random.randint(low=p, high=n - p)
+                        end_points[i, j, 0] = np.random.randint(low=p, high=m - p)
+                        end_points[i, j, 1] = np.random.randint(low=p, high=n - p)
             diff = np.abs(end_points - start_points)
             to_small = np.maximum(diff[..., 0], diff[..., 1]) < self.T  # kwarg axis of np.max is not supported in numba???
         
@@ -232,6 +231,7 @@ class PatchMatch:
 
     def scan(self):
         """Run a raster scan over the image and propagate displacement vectors."""
+        print("Scan")
         m, n, p = self.m, self.n, self.p
         for i in range(p, m-p):
             for j in range(p, n-p):
