@@ -20,6 +20,9 @@ spec = [
 ]
 
 
+OFFSETS = [(0, -1), (-1, -1), (-1, 0), (-1, 1)]  # offsets for propagation (in PatchMatch.scan): left, top left, top, top right
+
+
 # @jitclass(spec)
 class PatchMatch:
     """
@@ -76,6 +79,7 @@ class PatchMatch:
         self.m, self.n, _ = im.shape
         self.p = p
         assert min(self.m, self.n) >= 2 * self.p + 1, "At least one full patch must be contained in the image."
+        assert self.p >= 2, "p must statisfy p >= 2"  # to avoid index out of range in 1st order propagation in self.scan
         self.T = T
         self.N = N
         self.L = L
@@ -191,6 +195,10 @@ class PatchMatch:
         """Test the condition ||(di, dj)||_infty >= T"""
         return np.abs(di) >= self.T or np.abs(dj) >= self.T
 
+    def is_in_inner_image(self, i, j):
+        m, n, p = self.m, self.n, self.p  
+        return i >= p and i < m - p and j >= p and j < n - p
+
     # Zernike moments
     
     def unique_zernike_moment(self, i, j, p, u, v):
@@ -237,82 +245,46 @@ class PatchMatch:
             for j in range(p, n-p):
                 # Evaluate distance to the current nearest neighboor
                 d0 = self.dist_field[i, j]
-                # Evaluate distance to the candidate defined by the displacement of the pixel above
-                if i > p and i + self.vect_field[i - 1, j, 0] + p < m:
-                    d_up = self.dist2candidate(i, j, i - 1, j)
-                else:
-                    d_up = np.Inf
-                # Evaluate distance to the candidate defined by the displacement of the pixel to the left
-                if j > p and j + self.vect_field[i, j - 1, 1] + p < n:
-                    d_left = self.dist2candidate(i, j, i, j - 1)
-                else:
-                    d_left = np.Inf
-                # end of order 0 in modified patchmatch
-                if i > p and j > p and i + self.vect_field[i - 1, j - 1, 0] + p < m and j + self.vect_field[i - 1, j - 1, 1] + p < n:
-                    d_upleft = self.dist2candidate(i, j, i - 1, j - 1)
-                else:
-                    d_upleft = np.Inf
-                if j > p and i + 1 + p < m and i + self.vect_field[i + 1, j - 1, 0] + p < m and j + self.vect_field[i + 1, j - 1, 1] + p < n:
-                    d_upright = self.dist2candidate(i, j, i + 1, j - 1)
-                else:
-                    d_upright = np.Inf
-                # order 1 in modified patchmatch
-                vect_order_1_upup = 2 * self.vect_field[i, j - 1, :] - self.vect_field[i, j - 2, :]
-                if j - 1 > p and i + vect_order_1_upup[0] + p < m and j + vect_order_1_upup[1] + p < n:
-                    d_upup = self.dist(i, j, i + vect_order_1_upup[0], j + vect_order_1_upup[1])
-                else:
-                    d_upup = np.Inf
-                vect_order_1_rightright = 2 * self.vect_field[i + 1, j - 1, :] - self.vect_field[i + 2, j - 2, :]
-                if j - 1 > p and i + 2 + p < m and i + vect_order_1_rightright[0] + p < m and j + vect_order_1_rightright[1] + p < n:
-                    d_rightright = self.dist(i, j, i + vect_order_1_rightright[0], j + vect_order_1_rightright[1])
-                else:
-                    d_rightright = np.Inf
-                vect_order_1_upleftleft = 2 * self.vect_field[i - 1, j - 1, :] - self.vect_field[i - 2, j - 2, :]
-                if j-1 > p and i-1 > p and i + vect_order_1_upleftleft[0] + p < m and j + vect_order_1_upleftleft[1] + p < n:
-                    d_upleftleft = self.dist(i, j, i + vect_order_1_upleftleft[0], j + vect_order_1_upleftleft[1])
-                else:
-                    d_upleftleft = np.Inf
-                vect_order_1_leftleft = 2 * self.vect_field[i - 1, j, :] - self.vect_field[i - 2, j, :]
-                if j > p and i - 2 > p and i + vect_order_1_leftleft[0] + p < m and j + vect_order_1_leftleft[1] + p < n:
-                    d_leftleft = self.dist(i, j, i + vect_order_1_leftleft[0], j + vect_order_1_leftleft[1])
-                else:
-                    d_leftleft = np.Inf
+                # ---------------------
+                # 0th order propagation
+                # ---------------------
+                # Zero-th order candidates and associated distances
+                zo_distances = [np.Inf for _ in OFFSETS]
+                for c in range(len(OFFSETS)):
+                    oi, oj = OFFSETS[c]
+                    neighbour = (i + oi, j + oj)
+                    di, dj = self.vect_field[neighbour]
+                    if self.is_in_inner_image(*neighbour) and self.is_in_inner_image(i + di, j + dj):
+                        zo_distances[c] = self.dist(i, j, i + di, j + dj)
+                # ---------------------
+                # 1st order propagation
+                # ---------------------
+                fo_distances = [np.Inf for _ in OFFSETS]
+                for c in range(len(OFFSETS)):
+                    oi, oj = OFFSETS[c]
+                    neighbour1 = (i + oi, j + oj)
+                    neighbour2 = (i + 2 * oi, j + 2 * oj)
+                    di, dj = 2 * self.vect_field[neighbour1] - self.vect_field[neighbour2]
+                    if self.is_in_inner_image(*neighbour2) and self.is_in_inner_image(i + di, j + dj):
+                        fo_distances[c] = self.dist(i, j, i + di, j + dj)
+                
+                all_distances = np.concatenate((zo_distances, fo_distances))
 
                 # Compute best displacement
-                idx = np.argmin(np.array([d0, d_up, d_left, d_upleft, d_upright, d_upup, d_rightright, d_upleftleft, d_leftleft], dtype=np.float64))
+                idx = np.argmin(all_distances)
+                dmin = all_distances[idx]
+
                 # Propagate best displacement
-                if idx == 1:
-                    self.vect_field[i, j] = self.vect_field[i-1, j]
-                    self.dist_field[i, j] = d_up
-                    self.cnt +=1
-                if idx == 2:
-                    self.vect_field[i, j] = self.vect_field[i, j-1]
-                    self.dist_field[i, j] = d_left
-                    self.cnt +=1
-                if idx == 3:
-                    self.vect_field[i, j] = self.vect_field[i-1, j-1]
-                    self.dist_field[i, j] = d_upleft
-                    self.cnt +=1
-                if idx == 4:
-                    self.vect_field[i, j] = self.vect_field[i+1, j-1]
-                    self.dist_field[i, j] = d_upright
-                    self.cnt +=1
-                if idx == 5:
-                    self.vect_field[i, j] = vect_order_1_upup
-                    self.dist_field[i, j] = d_upup
-                    self.cnt +=1
-                if idx == 6:
-                    self.vect_field[i, j] = vect_order_1_rightright
-                    self.dist_field[i, j] = d_rightright
-                    self.cnt +=1
-                if idx == 7:
-                    self.vect_field[i, j] = vect_order_1_upleftleft
-                    self.dist_field[i, j] = d_upleftleft
-                    self.cnt +=1
-                if idx == 8:
-                    self.vect_field[i, j] = vect_order_1_leftleft
-                    self.dist_field[i, j] = d_leftleft
-                    self.cnt +=1
+                if dmin < d0:
+                    self.dist_field[i, j] = dmin
+                    self.cnt += 1
+                    oi, oj = OFFSETS[idx % len(OFFSETS)]
+                    if idx < len(OFFSETS):
+                        # 0th order propagation
+                        self.vect_field[i, j] = self.vect_field[i + oi, j + oj]
+                    else:
+                        self.vect_field[i, j] = 2 * self.vect_field[i + oi, j + oj] - self.vect_field[i + 2 * oi, j + 2 * oj]
+
 
     def flip(self):
         """Flip image and vector field."""
@@ -336,7 +308,7 @@ class PatchMatch:
                             self.cnt += 1
                             self.vect_field[i, j] = np.array([di_, dj_])
     
-    def symetry(self):
+    def symmetry(self):
         """Assure the symetry of the vect_field map"""
         m, n = self.m, self.n
         for i in range(m):
@@ -351,7 +323,7 @@ class PatchMatch:
             self.cnt = 0
             self.scan()
             self.random_search()
-            self.symetry()
+            self.symmetry()
             print(self.cnt)
             self.flip()
 
