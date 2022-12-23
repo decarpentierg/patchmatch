@@ -1,28 +1,80 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from numba.experimental import jitclass
+from numba.experimental import njit, jitclass
 from numba import int64, float64
-from scipy.special import factorial
 
 np.random.seed(0)
+
+# -----------------------------------
+# numba-compatible factorial function
+# -----------------------------------
+
+LOOKUP_TABLE = np.array([
+    1, 1, 2, 6, 24, 120, 720, 5040, 40320,
+    362880, 3628800, 39916800, 479001600,
+    6227020800, 87178291200, 1307674368000,
+    20922789888000, 355687428096000, 6402373705728000,
+    121645100408832000, 2432902008176640000], dtype='int64')
+
+@njit
+def factorial(n):
+    if n > 20:
+        raise ValueError
+    return LOOKUP_TABLE[n]
+
+@njit
+def h(x):
+    if np.abs(x) <= 1:
+        return 3 / 2 * np.abs(x)**3 - 5 / 2 * x**2 + 1
+    elif np.abs(x) <= 2:
+        return - 1 / 2 * np.abs(x)**3 + 5 / 2 * x**2 - 4 * np.abs(x) + 2
+    else:
+        return 0.
+
+@njit
+def n_polynomials(o):
+    """Number of Zernike polynomials with degree smaller or equal to o."""
+    return ((o + 1) // 2) * ((o + 2) // 2)
+
+# ------------------------------------
+# numba class attribute specifications
+# ------------------------------------
 
 spec = [
     ("im", float64[:, :, :]),
     ("m", int64),
     ("n", int64),
     ("p", int64),
+    ("o", int64),
     ("T", int64),
     ("N", int64),
     ("L", int64),
     ("cnt",int64),
+    ("zernike_moments", float64[:, :, :]),
     ("vect_field", int64[:, :, :]),
     ("dist_field", float64[:, :])
 ]
 
+# ----------------
+# global variables
+# ----------------
 
 OFFSETS = np.array([(0, -1), (-1, -1), (-1, 0), (-1, 1)])  # offsets for propagation (in PatchMatch.scan): left, top left, top, top right
 N_OFFSETS = len(OFFSETS)
 
+MAX_ZERNIKE_ORDER = 10
+C = np.zeros((MAX_ZERNIKE_ORDER + 1, MAX_ZERNIKE_ORDER + 1, MAX_ZERNIKE_ORDER // 2 + 1), dtype=np.float64)
+for u in range(1, MAX_ZERNIKE_ORDER + 1):
+    for v in range(1, u + 1):
+        if (u - v) % 2 == 0:
+            for s in range((u - v) // 2 + 1):
+                num = (-1)**s * factorial(u - s)
+                denum = (u - 2 * s + 2) * factorial((u + v) // 2 - s) * factorial((u - v) // 2 - s)
+                C[u, v, s] = num / denum
+
+# ----------------
+# PatchMatch class
+# ----------------
 
 @jitclass(spec)
 class PatchMatch:
@@ -39,6 +91,8 @@ class PatchMatch:
         image length
     p : int
         half size of patches, i.e. patches have shape (2p+1, 2p+1, 3)
+    o : int
+        maximum order of Zernike polynomials
     vect_field : array-like, shape (m, n, 2)
         displacement field, = one displacement vector for each pixel
         vect_field[i, j, 0] is the i coordinate of the displacement vector
@@ -68,7 +122,7 @@ class PatchMatch:
     """
 
 
-    def __init__(self, im, p, T, N, L, init_method=2):
+    def __init__(self, im, p, o, T, N, L, init_method=2, zernike=True):
         """
         Instantiates the PatchMatch algorithm.
         
@@ -84,17 +138,60 @@ class PatchMatch:
         self.p = p
         assert min(self.m, self.n) >= 2 * self.p + 1, "At least one full patch must be contained in the image."
         assert self.p >= 2, "p must statisfy p >= 2"  # to avoid index out of range in 1st order propagation in self.scan
+        self.o = o
         self.T = T
         self.N = N
         self.L = L
         self.cnt = 0  # number of change in vect_field for each scan
+        if zernike:
+            self.create_zernike_moments()
         if init_method == 1:
             self.create_vect_field1()
         elif init_method == 2:
             self.create_vect_field2()
         else:
-            raise ValueError()
+            raise ValueError
         self.create_dist_field()
+    
+    # ----------------------------------------
+    # zernike_moments initialization functions
+    # ----------------------------------------
+    
+    def get_filters(self):
+        """Compute filters F^{n, m}_{x, y} as defined in `Automatic Detection of Internal Copy-Move Forgeries in Images`, Ehret 2018."""
+        p, o = self.p, self.o
+        n_filters = n_polynomials(o)
+        F = np.zeros((n_filters, 2 * p + 1, 2 * p + 1), dtype=np.complex128)
+        for rho in range(p):
+            for theta in range(4 * (2 * rho + 1) - 1):
+                for u in range(1, o + 1):
+                    for v in range(u % 2, u + 1, 2):
+                        filter_nb = n_polynomials(u - 1) + (v - u % 2) // 2
+                        w = 0
+                        for s in range((u - v) // 2 + 1):
+                            a1 = ((rho + 1) / p)**(u - 2 * s + 2)
+                            a2 = (rho / p)**(u - 2 * s + 2)
+                            w += C[u, v, s] * (a1 - a2)
+                        a0 = 2 * np.pi / (4 * (2 * rho + 1))
+                        if v == 0:
+                            w *= a0
+                        else:
+                            a1 = np.exp(- 1j * v * (theta + 1) * a0)
+                            a2 = np.exp(- 1j * v * theta * a0)
+                            w *= 1j / v * (a1 - a2)
+                        i0 = rho * np.cos(a0 * theta)
+                        j0 = rho * np.sin(a0 * theta)
+                        imin = int(np.floor(i0) - 1)
+                        imax = int(np.floor(i0) + 2)
+                        jmin = int(np.floor(j0) - 1)
+                        jmax = int(np.floor(j0) + 2)
+                        for i in range(imin, imax + 1):
+                            for j in range(jmin, jmax + 1):
+                                F[filter_nb, i, j] += h(i0 - i) * h(j0 - j) * w
+        self.F = F
+
+    def create_zernike_moments(self):
+        pass
     
     # -----------------------------------
     # vect_field initialization functions
@@ -194,6 +291,20 @@ class PatchMatch:
     def dist(self, i, j, k, l):
         """Return l2 distance between patch centered at (i, j) and patch centered at (k, l)."""
         return np.sqrt(np.sum((self.patch(i, j) - self.patch(k, l))**2))
+    
+    def dist_zernike(self, i, j, k, l):
+        """Return l2 distance between zernike moment of patch centered at (i, j) and patch centered at (k, l) and of radius self.p.
+
+        zernike_moments are computed on a circle of radius radius centered around center of mass. 
+        Returns a vector of absolute Zernike moments through degree for the image im.
+        """
+        distance = 0
+        for u in range(self.p):
+            for v in range(-u,u+1,2):
+                Z_1 = self.unique_zernike_moment(self, i, j, u, v)
+                Z_2 = self.unique_zernike_moment(self, k, l, u, v)
+                distance += (Z_1-Z_2)**2
+        return np.sqrt(distance)
 
     def dist2candidate(self, i, j, k, l):
         """Evaluate the displacement of (k, l) as a potential displacement for (i, j) and return the associated distance."""
@@ -215,40 +326,6 @@ class PatchMatch:
         """Return True if point (i, j) is in inner image, and False otherwise."""
         m, n, p = self.m, self.n, self.p  
         return i >= p and i < m - p and j >= p and j < n - p
-
-    # Zernike moments
-    
-    def unique_zernike_moment(self, i, j, p, u, v):
-        """
-        Compute the Zernike moment of order u, v for the patch of size (2*p+1,2*p+1) center in (i,j). Compute base on the paper 
-        A. Tahmasbi, F. Saki, and S. B. Shokouhi. Classification of benign and malignant masses based on Zernike moments. 
-            Comput. Biol. Med., 41(8):726-735, 2011
-        """
-        Z = 0
-        for x in range(-p, p + 1):
-            for y in range(-p, p + 1):
-                rho = np.sqrt((2 * (x + i) - (2 * p + 1) + 1)**2 + (2 * (y + j) - (2 * p + 1) + 1)**2) / (2 * p + 1)
-                theta = np.arctan((2 * p - 2 * x) / (2 * y - 2 * p))
-                R = 0
-                for s in range((u- np.abs(v)) // 2 + 1):
-                    denom = factorial(s) * factorial((u + np.abs(v)) // 2 - s) * factorial((u - np.abs(v)) // 2 - s)
-                    R += (-1)**s * factorial(u - s) * rho**(u - 2 * s) / denom
-                Z += (u + 1) * self.im[x + i, y + j] * R * np.exp(-1j * v * theta)
-        return Z
-
-    def dist_zernike(self, i, j, k, l):
-        """Return l2 distance between zernike moment of patch centered at (i, j) and patch centered at (k, l) and of radius self.p.
-
-        zernike_moments are computed on a circle of radius radius centered around center of mass. 
-        Returns a vector of absolute Zernike moments through degree for the image im.
-        """
-        distance = 0
-        for u in range(self.p):
-            for v in range(-u,u+1,2):
-                Z_1 = self.unique_zernike_moment(self, i, j, self.p, u, v)
-                Z_2 = self.unique_zernike_moment(self, k, l, self.p, u, v)
-                distance += (Z_1-Z_2)**2
-        return np.sqrt(distance)
 
     # --------------------
     # PatchMatch algorithm
