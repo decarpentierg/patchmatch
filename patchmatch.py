@@ -283,6 +283,7 @@ class PatchMatch:
                         # 0th order propagation
                         self.vect_field[i, j] = self.vect_field[i + oi, j + oj]
                     else:
+                        # 1st order propagation
                         self.vect_field[i, j] = 2 * self.vect_field[i + oi, j + oj] - self.vect_field[i + 2 * oi, j + 2 * oj]
 
 
@@ -299,8 +300,8 @@ class PatchMatch:
             for j in range(p, n-p):
                 for k in range(self.L):
                     di, dj = self.vect_field[i, j]
-                    di_ = np.random.randint(max(i + di - 2**(k - 1), p) - i, min(i + di + 2**(k - 1) + 1, m - p) - i)
-                    dj_ = np.random.randint(max(j + dj - 2**(k - 1), p) - j, min(j + dj + 2**(k - 1) + 1, n - p) - j)
+                    di_ = np.random.randint(max(i + di - 2**k, p) - i, min(i + di + 2**k + 1, m - p) - i)
+                    dj_ = np.random.randint(max(j + dj - 2**k, p) - j, min(j + dj + 2**k + 1, n - p) - j)
                     if self.test_min_separation(di_, dj_):
                         d_init = self.dist_field[i, j]
                         d_test = self.dist(i, j, i + di_, j + dj_)
@@ -309,14 +310,14 @@ class PatchMatch:
                             self.vect_field[i, j] = np.array([di_, dj_])
     
     def symmetry(self):
-        """Assure the symetry of the vect_field map"""
-        m, n = self.m, self.n
-        for i in range(m):
-            for j in range(n):
+        """Assure the symmetry of the vect_field map"""
+        m, n, p = self.m, self.n, self.p
+        for i in range(p, m - p):
+            for j in range(p, n - p):
                 di, dj = self.vect_field[i, j]
-                if self.dist_field[i+di, j+dj] > self.dist_field[i,j]:
-                    self.vect_field[i+di,j+dj] = -self.vect_field[i,j]
-                    self.dist_field[i+di,j+dj] = self.dist_field[i,j]
+                if self.dist_field[i + di, j + dj] > self.dist_field[i, j]:
+                    self.vect_field[i + di, j + dj] = -self.vect_field[i, j]
+                    self.dist_field[i + di, j + dj] = self.dist_field[i, j]
 
     def iterate(self):
         for _ in range(2):
