@@ -67,13 +67,16 @@ class PatchMatch:
     """
 
 
-    def __init__(self, im, p, T, N, L):
+    def __init__(self, im, p, T, N, L, init_method=2):
         """
         Instantiates the PatchMatch algorithm.
         
         Parameters
         ----------
-        See class documentation.
+        im, p, T, N, L: See class documentation.
+
+        init_method : int
+            Method to use to initialize the displacement field.
         """
         self.im = im
         self.m, self.n, _ = im.shape
@@ -84,7 +87,12 @@ class PatchMatch:
         self.N = N
         self.L = L
         self.cnt = 0  # number of change in vect_field for each scan
-        self.create_vect_field2()
+        if init_method == 1:
+            self.create_vect_field1()
+        elif init_method == 2:
+            self.create_vect_field2()
+        else:
+            raise ValueError()
         self.create_dist_field()
     
     # -----------------------------------
