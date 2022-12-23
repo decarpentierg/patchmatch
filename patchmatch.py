@@ -20,10 +20,11 @@ spec = [
 ]
 
 
-OFFSETS = [(0, -1), (-1, -1), (-1, 0), (-1, 1)]  # offsets for propagation (in PatchMatch.scan): left, top left, top, top right
+OFFSETS = np.array([(0, -1), (-1, -1), (-1, 0), (-1, 1)])  # offsets for propagation (in PatchMatch.scan): left, top left, top, top right
+N_OFFSETS = len(OFFSETS)
 
 
-# @jitclass(spec)
+@jitclass(spec)
 class PatchMatch:
     """
     Class to implement the PatchMatch algorithm.
@@ -200,10 +201,18 @@ class PatchMatch:
         return self.dist(i, j, i + dk, j + dl)
     
     def test_min_separation(self, di, dj):
-        """Test the condition ||(di, dj)||_infty >= T"""
+        """Test the condition ||(di, dj)||_infty >= T."""
         return np.abs(di) >= self.T or np.abs(dj) >= self.T
+    
+    def get_min_displacement_norm(self):
+        """Get minimum displacement infinite norm over inner image."""
+        m, n, p = self.m, self.n, self.p
+        absolute_displacements = np.abs(self.vect_field[p:m - p, p:n - p])
+        norms = np.maximum(absolute_displacements[..., 0], absolute_displacements[..., 1])
+        return np.min(norms)
 
     def is_in_inner_image(self, i, j):
+        """Return True if point (i, j) is in inner image, and False otherwise."""
         m, n, p = self.m, self.n, self.p  
         return i >= p and i < m - p and j >= p and j < n - p
 
@@ -257,8 +266,8 @@ class PatchMatch:
                 # 0th order propagation
                 # ---------------------
                 # Zero-th order candidates and associated distances
-                zo_distances = [np.Inf for _ in OFFSETS]
-                for c in range(len(OFFSETS)):
+                zo_distances = np.Inf * np.ones(N_OFFSETS, dtype=np.float64)
+                for c in range(N_OFFSETS):
                     oi, oj = OFFSETS[c]
                     neighbour = (i + oi, j + oj)
                     di, dj = self.vect_field[neighbour]
@@ -267,13 +276,13 @@ class PatchMatch:
                 # ---------------------
                 # 1st order propagation
                 # ---------------------
-                fo_distances = [np.Inf for _ in OFFSETS]
-                for c in range(len(OFFSETS)):
+                fo_distances = np.Inf * np.ones(N_OFFSETS, dtype=np.float64)
+                for c in range(N_OFFSETS):
                     oi, oj = OFFSETS[c]
                     neighbour1 = (i + oi, j + oj)
                     neighbour2 = (i + 2 * oi, j + 2 * oj)
                     di, dj = 2 * self.vect_field[neighbour1] - self.vect_field[neighbour2]
-                    if self.is_in_inner_image(*neighbour2) and self.is_in_inner_image(i + di, j + dj):
+                    if self.is_in_inner_image(*neighbour2) and self.is_in_inner_image(i + di, j + dj) and self.test_min_separation(di, dj):
                         fo_distances[c] = self.dist(i, j, i + di, j + dj)
                 
                 all_distances = np.concatenate((zo_distances, fo_distances))
@@ -286,8 +295,8 @@ class PatchMatch:
                 if dmin < d0:
                     self.dist_field[i, j] = dmin
                     self.cnt += 1
-                    oi, oj = OFFSETS[idx % len(OFFSETS)]
-                    if idx < len(OFFSETS):
+                    oi, oj = OFFSETS[idx % N_OFFSETS]
+                    if idx < N_OFFSETS:
                         # 0th order propagation
                         self.vect_field[i, j] = self.vect_field[i + oi, j + oj]
                     else:
@@ -318,7 +327,7 @@ class PatchMatch:
                             self.vect_field[i, j] = np.array([di_, dj_])
     
     def symmetry(self):
-        """Assure the symmetry of the vect_field map"""
+        """Enforce the symmetry of the vect_field map."""
         m, n, p = self.m, self.n, self.p
         for i in range(p, m - p):
             for j in range(p, n - p):
@@ -328,6 +337,7 @@ class PatchMatch:
                     self.dist_field[i + di, j + dj] = self.dist_field[i, j]
 
     def iterate(self):
+        """Run one iteration of the PatchMatch algorithm."""
         for _ in range(2):
             self.cnt = 0
             self.scan()

@@ -20,7 +20,7 @@ class TestInitialization(unittest.TestCase):
             a = pm.PatchMatch(im, p=p, T=T, N=N, L=L, init_method=init_method)
 
             # Assert that the minimum inifinite norm of the displacements is >=T
-            self.assertGreaterEqual(np.min(np.max(np.abs(a.vect_field[p:m - p, p:n - p]), axis=-1)), T)
+            self.assertGreaterEqual(a.get_min_displacement_norm(), T)
 
             start_points = np.zeros((m, n, 2), dtype=np.int64)
             start_points[:, :, 0] = np.arange(m).reshape((m, 1))
