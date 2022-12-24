@@ -90,7 +90,7 @@ for rd in range(1, MAX_ZERNIKE_ORDER + 1):  # radial degree
 # PatchMatch class
 # ----------------
 
-# @jitclass(spec)
+@jitclass(spec)
 class PatchMatch:
     """
     Class to implement the PatchMatch algorithm.
@@ -233,7 +233,7 @@ class PatchMatch:
         for i in range(p, m - p):
             for j in range(p, n - p):
                 for rgb in range(3):
-                    patch = self.patch(i, j)[..., rgb].reshape((2 * p + 1, 2 * p + 1, 1))
+                    patch = self.patch(i, j)[..., rgb:rgb + 1]
                     a = np.sum(np.sum(patch * self.zernike_filters, axis=0), axis=0)
                     self.zernike_moments[i, j, rgb * n_filters:(rgb + 1) * n_filters] = np.abs(a)
 
@@ -335,7 +335,7 @@ class PatchMatch:
     def patch_features(self, i, j):
         """Return features of patch centered at (i, j)."""
         if self.zernike:
-            return self.zernike_moments[i, j].reshape((1, 1, -1))  # to have same nb of dimensions in both cases (required by numba)
+            return self.zernike_moments[i:i + 1, j:j + 1] # to have same nb of dimensions in both cases (required by numba)
         else:
             return self.patch(i, j)
     
