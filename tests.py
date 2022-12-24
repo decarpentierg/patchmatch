@@ -16,11 +16,11 @@ class TestInitialization(unittest.TestCase):
 
     def test_init_methods(self):
         for init_method in range(1, 3):
-            p, T, N, L = 10, 100, 1, 3
-            a = pm.PatchMatch(im, p=p, T=T, N=N, L=L, init_method=init_method)
+            p, min_dn, n_rs_candidates = 10, 64, 3
+            a = pm.PatchMatch(im, p=p, max_zrd=4, min_dn=min_dn, n_rs_candidates=n_rs_candidates)
 
             # Assert that the minimum inifinite norm of the displacements is >=T
-            self.assertGreaterEqual(a.get_min_displacement_norm(), T)
+            self.assertGreaterEqual(a.get_min_displacement_norm(), min_dn)
 
             start_points = np.zeros((m, n, 2), dtype=np.int64)
             start_points[:, :, 0] = np.arange(m).reshape((m, 1))
