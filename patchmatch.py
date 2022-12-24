@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from numba.experimental import njit, jitclass
-from numba import int64, float64, boolean
+from numba.experimental import jitclass
+from numba import njit, boolean, int64, float64, complex128
 
 np.random.seed(0)
 
@@ -61,7 +61,7 @@ spec = [
     ("n_rs_candidates", int64),
     ("n_propagations", int64),
     ("zernike", boolean),
-    ("zernike_filters", float64[:, :, :]),
+    ("zernike_filters", complex128[:, :, :]),
     ("zernike_moments", float64[:, :, :]),
     ("vect_field", int64[:, :, :]),
     ("dist_field", float64[:, :])
@@ -90,7 +90,7 @@ for rd in range(1, MAX_ZERNIKE_ORDER + 1):  # radial degree
 # PatchMatch class
 # ----------------
 
-@jitclass(spec)
+# @jitclass(spec)
 class PatchMatch:
     """
     Class to implement the PatchMatch algorithm.
@@ -192,14 +192,14 @@ class PatchMatch:
     def create_zernike_filters(self):
         """Compute filters F^{n, m}_{x, y} as defined in `Automatic Detection of Internal Copy-Move Forgeries in Images`, Thibaud Ehret, 2018."""
         p, max_zrd = self.p, self.max_zrd
-        n_filters = double2single_zernike_index(self.max_zrd + 1, (self.max_zrd - 1) % 2 + 1)
+        n_filters = double2single_zernike_index(self.max_zrd + 1, self.max_zrd % 2 + 1)
         self.zernike_filters = np.zeros((2 * p + 1, 2 * p + 1, n_filters), dtype=np.complex128)
         # For each pixel in polar coordinates
         for rho in range(p):  # radius
             for theta in range(4 * (2 * rho + 1) - 1):  # azimuthal angle
                 # For each Zernike polynomial
                 for rd in range(1, max_zrd + 1):  # radial degree
-                    for ad in range(rd % 2, rd + 1, 2):  # azimuthal degree
+                    for ad in range((rd - 1) % 2 + 1, rd + 1, 2):  # azimuthal degree
                         filter_idx = double2single_zernike_index(rd, ad)  # index of current Zernike filter
                         w = 0
                         # Radial integration
@@ -232,7 +232,7 @@ class PatchMatch:
         self.zernike_moments = np.zeros((m, n, 3 * n_filters), dtype=np.float64)
         for i in range(p, m - p):
             for j in range(p, n - p):
-                a = np.zeros(n_filters)
+                a = np.zeros(3 * n_filters, dtype=np.complex128)
                 for di in range(-p, p + 1):
                     for dj in range(-p, p + 1):
                         coefs = self.zernike_filters[di + p, dj + p]
@@ -333,7 +333,7 @@ class PatchMatch:
     def patch_features(self, i, j):
         """Return features of patch centered at (i, j)."""
         if self.zernike:
-            return self.zernike_moments[i, j]
+            return self.zernike_moments[i, j].reshape((1, 1, -1))  # to have same nb of dimensions in both cases (required by numba)
         else:
             p = self.p
             return self.im[i - p:i + p + 1, j - p:j + p + 1]
