@@ -232,14 +232,11 @@ class PatchMatch:
         self.zernike_moments = np.zeros((m, n, 3 * n_filters), dtype=np.float64)
         for i in range(p, m - p):
             for j in range(p, n - p):
-                a = np.zeros(3 * n_filters, dtype=np.complex128)
-                for di in range(-p, p + 1):
-                    for dj in range(-p, p + 1):
-                        coefs = self.zernike_filters[di + p, dj + p]
-                        rgb = self.im[i + di, j + dj]
-                        a += np.outer(coefs, rgb).flatten()
-                self.zernike_moments[i, j] = np.abs(a)
-    
+                for rgb in range(3):
+                    patch = self.patch(i, j)[..., rgb].reshape((2 * p + 1, 2 * p + 1, 1))
+                    a = np.sum(np.sum(patch * self.zernike_filters, axis=0), axis=0)
+                    self.zernike_moments[i, j, rgb * n_filters:(rgb + 1) * n_filters] = np.abs(a)
+
     # -----------------------------------
     # vect_field initialization functions
     # -----------------------------------
@@ -330,13 +327,17 @@ class PatchMatch:
     # patch-wise functions
     # --------------------
 
+    def patch(self, i, j):
+        """Return patch centered at (i, j)."""
+        p = self.p
+        return self.im[i - p:i + p + 1, j - p:j + p + 1]
+
     def patch_features(self, i, j):
         """Return features of patch centered at (i, j)."""
         if self.zernike:
             return self.zernike_moments[i, j].reshape((1, 1, -1))  # to have same nb of dimensions in both cases (required by numba)
         else:
-            p = self.p
-            return self.im[i - p:i + p + 1, j - p:j + p + 1]
+            return self.patch(i, j)
     
     def dist(self, i, j, k, l):
         """Return l2 distance between patch centered at (i, j) and patch centered at (k, l)."""
