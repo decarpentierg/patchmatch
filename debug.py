@@ -8,6 +8,6 @@ im = np.array(im).astype("double")
 gt = Image.open("data/TP_C02_007_gt.png")
 gt = np.array(gt) > 0
 
-a = pm.PatchMatch(im, p=10, max_zrd=4, min_dn=100, n_rs_candidates=3)
+a = pm.PatchMatch(im, p=10, max_zrd=4, min_dn=64, n_rs_candidates=3)
 
 a.iterate()
