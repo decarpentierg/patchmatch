@@ -5,7 +5,7 @@ from numba import int64, float64
 from scipy.special import factorial
 
 np.random.seed(0)
-
+"""
 spec = [
     ("im", float64[:, :, :]),
     ("m", int64),
@@ -21,6 +21,8 @@ spec = [
 
 
 @jitclass(spec)
+"""
+
 class PatchMatch:
     """
     Class to implement the PatchMatch algorithm.
@@ -80,7 +82,7 @@ class PatchMatch:
         self.N = N
         self.L = L
         self.cnt = 0  # number of change in vect_field for each scan
-        self.create_vect_field1()
+        self.create_vect_field2()
         self.create_dist_field()
     
     # -----------------------------------
@@ -226,6 +228,9 @@ class PatchMatch:
                 distance += (Z_1-Z_2)**2
         return np.sqrt(distance)
 
+    def is_in_grid(self, k,l):
+        return (k>self.p) and (l>self.p) and (k<self.m-self.p) and (l<self.n-self.p)
+
     # --------------------
     # PatchMatch algorithm
     # --------------------
@@ -243,38 +248,40 @@ class PatchMatch:
                 else:
                     d_up = np.Inf
                 # Evaluate distance to the candidate defined by the displacement of the pixel to the left
-                if j > p and j + self.vect_field[i, j-1, 1] + p < n:
+                if j + self.vect_field[i, j-1, 1] >= p  and j + self.vect_field[i, j-1, 1] + p < n:
                     d_left = self.dist2candidate(i, j, i, j-1)
                 else:
                     d_left = np.Inf
                 #end of order 0 in modified patchmatch
-                if i > p and j > p and i + self.vect_field[i-1, j-1, 0] + p < m and j + self.vect_field[i-1, j-1, 1] + p < n:
+                if self.is_in_grid(i-1,j-1):
                     d_upleft = self.dist2candidate(i, j, i-1, j-1)
                 else:
                     d_upleft = np.Inf
-                if j > p and i + 1 + p < m and i + self.vect_field[i+1, j-1, 0] + p < m and j + self.vect_field[i+1, j-1, 1] + p < n:
+                if self.is_in_grid(i+1,j-1):
                     d_upright = self.dist2candidate(i, j, i+1, j-1)
                 else:
                     d_upright = np.Inf
                 #order 1 in modified patchmatch
+                di, dj = self.vect_field[i,j]    
+
                 vect_order_1_upup = 2 * self.vect_field[i, j-1, :] - self.vect_field[i, j-2, :]
-                if j-1 > p and i + vect_order_1_upup[0]+p < m and j + vect_order_1_upup[1] + p < n:
-                    d_upup = self.dist2candidate(i, j, i+vect_order_1_upup[0], j+vect_order_1_upup[1])
+                if self.is_in_grid(i,j-1) and self.is_in_grid(i+ di +vect_order_1_upup[0], j + dj + vect_order_1_upup[1]):
+                    d_upup = self.dist(i, j, i+ di +vect_order_1_upup[0], j + dj + vect_order_1_upup[1])
                 else:
                     d_upup = np.Inf
                 vect_order_1_rightright = 2 * self.vect_field[i+1, j-1, :] - self.vect_field[i+2, j-2, :]
-                if j-1 > p and i+2+p < m and i + vect_order_1_rightright[0] + p < m and j + vect_order_1_rightright[1] + p < n:
-                    d_rightright = self.dist2candidate(i, j, i+vect_order_1_rightright[0], j+vect_order_1_rightright[1])
+                if self.is_in_grid(i+2,j-2) and self.is_in_grid(i+di+vect_order_1_rightright[0], j+dj+vect_order_1_rightright[1]):
+                    d_rightright = self.dist(i, j, i+di+vect_order_1_rightright[0], j+dj+vect_order_1_rightright[1])
                 else:
                     d_rightright = np.Inf
                 vect_order_1_upleftleft = 2 * self.vect_field[i-1, j-1, :] - self.vect_field[i-2, j-2, :]
-                if j-1 > p and i-1 > p and i + vect_order_1_upleftleft[0] + p < m and j + vect_order_1_upleftleft[1] + p < n:
-                    d_upleftleft = self.dist2candidate(i, j, i+vect_order_1_upleftleft[0], j+vect_order_1_upleftleft[1])
+                if self.is_in_grid(i-2,j-2) and self.is_in_grid(i+di+vect_order_1_upleftleft[0], j+dj+vect_order_1_upleftleft[1]):
+                    d_upleftleft = self.dist(i, j, i+di+vect_order_1_upleftleft[0], j+dj+vect_order_1_upleftleft[1])
                 else:
                     d_upleftleft = np.Inf
                 vect_order_1_leftleft = 2 * self.vect_field[i-1, j, :] - self.vect_field[i-2, j, :]
-                if j > p and i-2 > p and i + vect_order_1_leftleft[0] + p < m and j + vect_order_1_leftleft[1] + p < n:
-                    d_leftleft = self.dist2candidate(i, j, i+vect_order_1_leftleft[0], j+vect_order_1_leftleft[1])
+                if self.is_in_grid(i-2,j) and self.is_in_grid(i+di+vect_order_1_leftleft[0], j+dj+vect_order_1_leftleft[1]):
+                    d_leftleft = self.dist(i, j, i+di+vect_order_1_leftleft[0], j+dj+vect_order_1_leftleft[1])
                 else:
                     d_leftleft = np.Inf
 
