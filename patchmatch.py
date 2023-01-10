@@ -446,6 +446,7 @@ class PatchMatch:
         self.im = self.im[::-1, ::-1]
         self.vect_field = -self.vect_field[::-1, ::-1]
         self.dist_field = self.dist_field[::-1, ::-1]
+        self.zernike_moments = self.zernike_moments[::-1, ::-1]
 
     def iterate(self):
         """Run one iteration of the PatchMatch algorithm."""
