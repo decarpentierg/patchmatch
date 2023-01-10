@@ -91,7 +91,6 @@ for rd in range(1, MAX_ZERNIKE_ORDER + 1):  # radial degree
 # ----------------
 
 @jitclass(spec)
-
 class PatchMatch:
     """
     Class to implement the PatchMatch algorithm.
@@ -194,7 +193,7 @@ class PatchMatch:
         self.zernike_filters = np.zeros((2 * p + 1, 2 * p + 1, n_filters), dtype=np.complex128)
         # For each pixel in polar coordinates
         for rho in range(p):  # radius
-            for theta in range(4 * (2 * rho + 1) - 1):  # azimuthal angle
+            for theta in range(4 * (2 * rho + 1)):  # azimuthal angle
                 # For each Zernike polynomial
                 for rd in range(1, max_zrd + 1):  # radial degree
                     for ad in range((rd - 1) % 2 + 1, rd + 1, 2):  # azimuthal degree
