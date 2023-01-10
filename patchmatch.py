@@ -469,30 +469,6 @@ class PatchMatch:
         for _ in range(n_iter):
             self.iterate()
 
-    def create_mask(self):
-        p, n, m = self.p, self.n, self.m
-        P = []
-        for i in range(-p+1,p):
-            for j in range(-p+1,p):
-                P.append([i,j,1])
-        P = np.array(P).T
-        H = P.T @ np.linalg.inv(P @ P.T) @ P
-        H_ = np.identity(P.shape[1])
-
-        Epsilon = np.zeros((m,n))
-        for i in range(p, m - p):
-            for j in range(p, n - p):
-                Delta = []
-                for k in range(-p+1,p):
-                    for l in range(-p+1,p):
-                        dx, dy = self.vect_field(i+k,j+l)
-                        Delta.append([dx,dy,0])
-                Delta = np.array(Delta).T
-                Epsilon = np.sum((Delta @ P)**2)
-        return Epsilon
-
-
-
 
 def plot_vect_field(pm_, mask, step=100, **kwargs):
     """
