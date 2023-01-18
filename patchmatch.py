@@ -59,7 +59,8 @@ spec = [
     ("max_zrd", int64),
     ("min_dn", int64),
     ("n_rs_candidates", int64),
-    ("n_propagations", int64),
+    ("n_performed_iterations", int64),
+    ("n_propagations", int64[:]),
     ("zernike", boolean),
     ("zernike_filters", complex128[:, :, :]),
     ("zernike_moments", float64[:, :, :]),
@@ -85,6 +86,8 @@ for rd in range(1, MAX_ZERNIKE_ORDER + 1):  # radial degree
                 num = (-1)**s * factorial(rd - s)
                 denum = (rd - 2 * s + 2) * factorial((rd + ad) // 2 - s) * factorial((rd - ad) // 2 - s)
                 C[rd, ad, s] = num / denum
+
+MAX_N_ITERATIONS = 20
 
 # ----------------
 # PatchMatch class
@@ -118,7 +121,10 @@ class PatchMatch:
         number of candidates in the random search phase
         We choose n_rs_candidates new candidates randomely in squares of size 2**i, 0 <= i <= n_rs_candidates - 1.
     
-    n_propagations : int
+    n_performed_iterations : int
+        keeps track of the number of iterations performed already
+    
+    n_propagations : array-like, shape (MAX_N_ITERATIONS,)
         used to record the number of changes in vect_field during a single scan of PatchMatch
     
     zernike : bool
@@ -170,7 +176,8 @@ class PatchMatch:
         self.min_dn = min_dn
         self.n_rs_candidates = n_rs_candidates
         self.zernike = zernike
-        self.n_propagations = 0  # number of change in vect_field for each scan
+        self.n_performed_iterations = 0
+        self.n_propagations = np.zeros(MAX_N_ITERATIONS, dtype=np.int64)
         if zernike:
             self.create_zernike_filters()
             self.create_zernike_moments()
@@ -367,7 +374,6 @@ class PatchMatch:
 
     def scan(self):
         """Run a raster scan over the image and propagate displacement vectors."""
-        print("Scan")
         m, n, p = self.m, self.n, self.p
         for i in range(p, m-p):
             for j in range(p, n-p):
@@ -405,7 +411,7 @@ class PatchMatch:
                 # Propagate best displacement
                 if dmin < d0:
                     self.dist_field[i, j] = dmin
-                    self.n_propagations += 1
+                    self.n_propagations[self.n_performed_iterations] += 1
                     oi, oj = OFFSETS[idx % N_OFFSETS]
                     if idx < N_OFFSETS:
                         # 0th order propagation
@@ -427,7 +433,7 @@ class PatchMatch:
                         d_init = self.dist_field[i, j]
                         d_test = self.dist(i, j, i + di_, j + dj_)
                         if d_test < d_init:
-                            self.n_propagations += 1
+                            self.n_propagations[self.n_performed_iterations] += 1
                             self.vect_field[i, j] = np.array([di_, dj_])
     
     def symmetry(self):
@@ -437,7 +443,7 @@ class PatchMatch:
             for j in range(p, n - p):
                 di, dj = self.vect_field[i, j]
                 if self.dist_field[i + di, j + dj] > self.dist_field[i, j]:
-                    self.n_propagations += 1
+                    self.n_propagations[self.n_performed_iterations] += 1
                     self.vect_field[i + di, j + dj] = -self.vect_field[i, j]
                     self.dist_field[i + di, j + dj] = self.dist_field[i, j]
     
@@ -451,12 +457,12 @@ class PatchMatch:
     def iterate(self):
         """Run one iteration of the PatchMatch algorithm."""
         for _ in range(2):
-            self.n_propagations = 0
             self.scan()
             self.random_search()
             self.symmetry()
-            print(self.n_propagations)
             self.flip()
+        # keep track of the number of performed iterations, but reset to 0 when reaching MAX_N_ITERATIONS
+        self.n_performed_iterations = (self.n_performed_iterations + 1) % MAX_N_ITERATIONS
 
     def run(self, n_iter):
         """
