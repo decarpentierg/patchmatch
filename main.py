@@ -7,7 +7,7 @@ import pickle
 
 import patchmatch as pm
 
-DATA = "data/CMFDdb_grip/forged_images/"  # directory where to find forged images
+DATA = "CMFDdb_grip/forged_images/"  # directory where to find forged images
 RESULTS = "results/"  # directory where to find the results
 
 ls = sorted([x[:10] for x in os.listdir(DATA) if "copy" in x])
@@ -42,10 +42,10 @@ for im_name in tqdm(ls):
 
     # Save results
     res = {attribute[0]:a.__getattribute__(attribute[0]) for attribute in pm.spec[1:]}
-    np.savez_compressed(f"{im_name}_results.npz", **res)
+    np.savez_compressed(f"{RESULTS}/{im_name}_results.npz", **res)
 
-with open("zernike_times.pkl", "wb") as file:
+with open(f"{RESULTS}/zernike_times.pkl", "wb") as file:
     pickle.dump(zernike_times, file)
 
-with open("patchmatch_times.pkl", "wb") as file:
+with open(f"{RESULTS}/patchmatch_times.pkl", "wb") as file:
     pickle.dump(patchmatch_times, file)
