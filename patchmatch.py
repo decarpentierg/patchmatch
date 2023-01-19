@@ -61,6 +61,7 @@ spec = [
     ("n_rs_candidates", int64),
     ("n_performed_iterations", int64),
     ("n_propagations", int64[:]),
+    ("sum_of_distances", float64[:]),
     ("zernike", boolean),
     ("zernike_filters", complex128[:, :, :]),
     ("zernike_moments", float64[:, :, :]),
@@ -127,6 +128,9 @@ class PatchMatch:
     n_propagations : array-like, shape (MAX_N_ITERATIONS,)
         used to record the number of changes in vect_field during a single scan of PatchMatch
     
+    sum_of_distances : array-like, shape (MAX_N_ITERATIONS,)
+        used to record the evolution of the sum of distances of patches to their favorites along the iterations
+    
     zernike : bool
         Whether to use Zernike moments as features instead of RGB patches.
     
@@ -178,6 +182,7 @@ class PatchMatch:
         self.zernike = zernike
         self.n_performed_iterations = 0
         self.n_propagations = np.zeros(MAX_N_ITERATIONS, dtype=np.int64)
+        self.sum_of_distances = np.zeros(MAX_N_ITERATIONS, dtype=np.float64)
         if zernike:
             self.create_zernike_filters()
             self.create_zernike_moments()
@@ -461,6 +466,9 @@ class PatchMatch:
             self.random_search()
             self.symmetry()
             self.flip()
+        # keep track of the the sum of distances of patches to their favorites at each iteration
+        m, n, p = self.m, self.n, self.p
+        self.sum_of_distances[self.n_performed_iterations] = self.dist_field[p:m - p, p:n - p].sum()
         # keep track of the number of performed iterations, but reset to 0 when reaching MAX_N_ITERATIONS
         self.n_performed_iterations = (self.n_performed_iterations + 1) % MAX_N_ITERATIONS
 

@@ -52,7 +52,7 @@ for idx in tqdm(range(start, stop)):
     patchmatch_times[im_name] = t1 - t0
 
     # Save results
-    res = {attribute[0]:a.__getattribute__(attribute[0]) for attribute in pm.spec[1:]}
+    res = {attribute[0]:a.__getattribute__(attribute[0]) for attribute in pm.spec if not attribute[0] in ["im", "zernike_filters", "zernike_moments"]}
     np.savez_compressed(f"{RESULTS}/{im_name}_results.npz", **res)
 
 with open(f"{RESULTS}/zernike_times_C{c_idx:02d}_{start:03d}_to_{stop:03d}.pkl", "wb") as file:
