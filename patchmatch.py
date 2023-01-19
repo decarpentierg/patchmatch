@@ -475,7 +475,6 @@ class PatchMatch:
         for _ in range(n_iter):
             self.iterate()
 
-
 def plot_vect_field(pm_, mask, step=100, **kwargs):
     """
     Plot vect_field as arrows above the image
