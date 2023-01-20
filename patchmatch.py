@@ -182,7 +182,7 @@ class PatchMatch:
         self.zernike = zernike
         self.n_performed_iterations = 0
         self.n_propagations = np.zeros(MAX_N_ITERATIONS, dtype=np.int64)
-        self.sum_of_distances = np.zeros(MAX_N_ITERATIONS, dtype=np.float64)
+        self.sum_of_distances = np.zeros(MAX_N_ITERATIONS + 1, dtype=np.float64)
         if zernike:
             self.create_zernike_filters()
             self.create_zernike_moments()
@@ -193,6 +193,7 @@ class PatchMatch:
         else:
             raise ValueError
         self.create_dist_field()
+        self.update_sum_of_distances()
     
     # ----------------------------------------
     # zernike_moments initialization functions
@@ -331,6 +332,11 @@ class PatchMatch:
         for i in range(p, m - p):
             for j in range(p, n - p):
                 self.dist_field[i, j] = self.dist2candidate(i, j, i, j)
+    
+    def update_sum_of_distances(self):
+        """Keep track of the the sum of distances of patches to their favorites at each iteration."""
+        m, n, p = self.m, self.n, self.p
+        self.sum_of_distances[self.n_performed_iterations] = self.dist_field[p:m - p, p:n - p].sum()
 
     # --------------------
     # patch-wise functions
@@ -461,16 +467,16 @@ class PatchMatch:
 
     def iterate(self):
         """Run one iteration of the PatchMatch algorithm."""
+        # assert self.n_performed_iteration < MAX_N_ITERATIONS, \
+        #     "Max number of iterations reached. Please increase the value of MAX_N_ITERATIONS to go further." 
         for _ in range(2):
             self.scan()
             self.random_search()
             self.symmetry()
             self.flip()
-        # keep track of the the sum of distances of patches to their favorites at each iteration
-        m, n, p = self.m, self.n, self.p
-        self.sum_of_distances[self.n_performed_iterations] = self.dist_field[p:m - p, p:n - p].sum()
-        # keep track of the number of performed iterations, but reset to 0 when reaching MAX_N_ITERATIONS
-        self.n_performed_iterations = (self.n_performed_iterations + 1) % MAX_N_ITERATIONS
+        # keep track of the number of performed iterations
+        self.n_performed_iterations = self.n_performed_iterations + 1
+        self.update_sum_of_distances()
 
     def run(self, n_iter):
         """

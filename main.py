@@ -2,6 +2,7 @@ import numpy as np
 from PIL import Image
 from time import time
 from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 import os
 import pickle
 import argparse
@@ -14,18 +15,18 @@ args = parser.parse_args()
 c_idx, start, stop = [int(x) for x in args.indices.split(",")]
 
 DATA = "CMFDdb_grip/forged_images/"  # directory where to find forged images
-RESULTS = "results2/"  # directory where to find the results
+RESULTS = "results3/"  # directory where to find the results
 
 ls = sorted([x[:10] for x in os.listdir(DATA) if "copy" in x])
 
 zernike_times = {}
 patchmatch_times = {}
 
-for idx in tqdm(range(start, stop)):
+def process(idx):
     # Compute image name
     im_name = f"TP_C{c_idx:02d}_{idx:03d}"
     if im_name not in ls:  # if image does not exist, simply skip it
-        continue
+        return
 
     # Load image
     im = Image.open(f"{DATA}/{im_name}_copy.png")
@@ -47,7 +48,7 @@ for idx in tqdm(range(start, stop)):
 
     # Run PatchMatch
     t0 = time()
-    a.run(10)
+    a.run(20)
     t1 = time()
     patchmatch_times[im_name] = t1 - t0
 
@@ -56,6 +57,8 @@ for idx in tqdm(range(start, stop)):
     # res = {attribute:a.__getattribute__(attribute) for attribute in attributes if not attribute in ["im", "zernike_filters", "zernike_moments"]}
     res = {attribute:a.__getattribute__(attribute) for attribute in ["n_performed_iterations", "n_propagations", "sum_of_distances"]}
     np.savez_compressed(f"{RESULTS}/{im_name}_results.npz", **res)
+
+process_map(process, range(start, stop))
 
 with open(f"{RESULTS}/zernike_times_C{c_idx:02d}_{start:03d}_to_{stop:03d}.pkl", "wb") as file:
     pickle.dump(zernike_times, file)
