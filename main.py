@@ -14,7 +14,7 @@ args = parser.parse_args()
 c_idx, start, stop = [int(x) for x in args.indices.split(",")]
 
 DATA = "CMFDdb_grip/forged_images/"  # directory where to find forged images
-RESULTS = "results/"  # directory where to find the results
+RESULTS = "results2/"  # directory where to find the results
 
 ls = sorted([x[:10] for x in os.listdir(DATA) if "copy" in x])
 
@@ -52,7 +52,9 @@ for idx in tqdm(range(start, stop)):
     patchmatch_times[im_name] = t1 - t0
 
     # Save results
-    res = {attribute[0]:a.__getattribute__(attribute[0]) for attribute in pm.spec if not attribute[0] in ["im", "zernike_filters", "zernike_moments"]}
+    attributes = [x[0] for x in pm.spec]
+    # res = {attribute:a.__getattribute__(attribute) for attribute in attributes if not attribute in ["im", "zernike_filters", "zernike_moments"]}
+    res = {attribute:a.__getattribute__(attribute) for attribute in ["n_performed_iterations", "n_propagations", "sum_of_distances"]}
     np.savez_compressed(f"{RESULTS}/{im_name}_results.npz", **res)
 
 with open(f"{RESULTS}/zernike_times_C{c_idx:02d}_{start:03d}_to_{stop:03d}.pkl", "wb") as file:
