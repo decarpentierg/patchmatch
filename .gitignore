@@ -4,6 +4,8 @@ CMFDdb_grip/
 connection_scripts/
 *.sh
 *results*
+figures/
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
