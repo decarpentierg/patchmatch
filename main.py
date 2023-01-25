@@ -8,6 +8,7 @@ import pickle
 import argparse
 
 import patchmatch as pm
+import detection as dt
 
 parser = argparse.ArgumentParser(description="Run PatchMatch on test database")
 parser.add_argument("indices", type=str, help="Run on images TP_C%1_%2 to TP_C%1_%3 where argument=%1,%2,%3")
@@ -15,7 +16,7 @@ args = parser.parse_args()
 c_idx, start, stop = [int(x) for x in args.indices.split(",")]
 
 DATA = "CMFDdb_grip/forged_images/"  # directory where to find forged images
-RESULTS = "results3/"  # directory where to find the results
+RESULTS = "results4/"  # directory where to find the results
 
 ls = sorted([x[:10] for x in os.listdir(DATA) if "copy" in x])
 
@@ -28,9 +29,11 @@ def process(idx):
     if im_name not in ls:  # if image does not exist, simply skip it
         return
 
-    # Load image
+    # Load image and ground truth
     im = Image.open(f"{DATA}/{im_name}_copy.png")
     im = np.array(im).astype("double")
+    gt = Image.open(f"{DATA}/{im_name}_gt.png")
+    gt = np.array(gt) > 0
 
     # Initialize PatchMatch
     t0 = time()
@@ -48,7 +51,15 @@ def process(idx):
 
     # Run PatchMatch
     t0 = time()
-    a.run(20)
+    niter = 20
+    fscores1 = np.zeros(niter)
+    fscores2 = np.zeros(niter)
+    for i in range(niter):
+        a.iterate()
+        mask1 = dt.compute_mask(a.vect_field, a.m, a.n, a.p)
+        mask2 = dt.compute_mask(a.vect_field, a.m, a.n, a.p)
+        fscores1[i] = dt.fscore(mask1, gt)
+        fscores2[i] = dt.fscore(mask2, gt)
     t1 = time()
     patchmatch_times[im_name] = t1 - t0
 
@@ -56,6 +67,7 @@ def process(idx):
     attributes = [x[0] for x in pm.spec]
     # res = {attribute:a.__getattribute__(attribute) for attribute in attributes if not attribute in ["im", "zernike_filters", "zernike_moments"]}
     res = {attribute:a.__getattribute__(attribute) for attribute in ["n_performed_iterations", "n_propagations", "sum_of_distances"]}
+    res.update({"fscores1": fscores1, "fscores2": fscores2})
     np.savez_compressed(f"{RESULTS}/{im_name}_results.npz", **res)
 
 process_map(process, range(start, stop))

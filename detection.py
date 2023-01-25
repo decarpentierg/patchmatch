@@ -5,7 +5,7 @@ def gradn(im):
     """
     Compute the norm of the gradient of the image im of shape (m,n,3). The return is of size (m-1,n-1)
     """
-    grad = np.sqrt((np.diff(im, axis=0)[:, :-1])**2 + (np.diff(im, axis=1)[:-1, :])**2)
+    grad = np.sqrt(np.diff(im, axis=0)[:, :-1]**2 + np.diff(im, axis=1)[:-1, :]**2)
     return grad
 
 def compute_mask(vect_field, m, n, p):
@@ -43,11 +43,40 @@ def compute_mask(vect_field, m, n, p):
         if np.sum(1 * (component == i)) / white_pixel > th_comp:
             liste_component.append(i)
     mask_4 = np.zeros((m, n))
-    number_detection = len(liste_component) // 2
     for i in liste_component:
         mask_4 += 1 * (component == i)
 
     #dilatate the result to compensate the patch effect
     kernel = np.ones((s, s))
     mask = cv.dilate(mask_4, kernel) > 0
-    return mask, number_detection
+    return mask
+
+
+def compute_mask2(vect_field, m, n, p):
+    # Compute end_points = start_points + displacement_vectors
+    ii, jj = np.meshgrid(np.arange(m), np.arange(n), indexing="ij")
+    ij = np.stack((ii, jj), axis=-1)
+    end_points = ij + vect_field
+    # Compose function f : start_points -> end_points with itself
+    end_points2 = end_points[end_points[..., 0], end_points[..., 1]]
+    # Compute the ground distances after this second application of f
+    back_and_forth_distance = np.max(np.abs(end_points2 - ij), axis=-1)
+    # mask := "coherent" points = points where back_and_forth_distance is 0
+    mask = (back_and_forth_distance == 0).astype("uint8")
+    # erode mask
+    eroded_mask = cv.erode(mask, np.ones((2, 2))) 
+    # Select the 2 biggest connected components
+    N, components = cv.connectedComponents(eroded_mask)
+    bc = np.bincount(components.flatten())
+    indices = np.argsort(bc)[::-1]
+    biggest_components = ((components == indices[1]) + (components == indices[2])).astype("uint8")
+    # Dilate mask
+    final_mask = cv.dilate(biggest_components, np.ones((15, 15)))
+    return final_mask
+
+def fscore(mask, gt):
+    tp = np.sum(mask * gt)
+    fp = np.sum(mask * (gt < 1))
+    fn = np.sum((mask < 1) * gt)
+    
+    return 2 * np.sum(tp) / (2 * np.sum(tp) + np.sum(fn) + np.sum(fp))
