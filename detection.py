@@ -71,7 +71,7 @@ def compute_mask2(vect_field, m, n, p):
     indices = np.argsort(bc)[::-1]
     biggest_components = ((components == indices[1]) + (components == indices[2])).astype("uint8")
     # Dilate mask
-    final_mask = cv.dilate(biggest_components, np.ones((15, 15)))
+    final_mask = cv.dilate(biggest_components, np.ones((15, 15))) > 0
     return final_mask
 
 def fscore(mask, gt):

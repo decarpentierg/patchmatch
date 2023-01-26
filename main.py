@@ -16,7 +16,7 @@ args = parser.parse_args()
 c_idx, start, stop = [int(x) for x in args.indices.split(",")]
 
 DATA = "CMFDdb_grip/forged_images/"  # directory where to find forged images
-RESULTS = "results4/"  # directory where to find the results
+RESULTS = "results5/"  # directory where to find the results
 
 ls = sorted([x[:10] for x in os.listdir(DATA) if "copy" in x])
 
@@ -57,7 +57,7 @@ def process(idx):
     for i in range(niter):
         a.iterate()
         mask1 = dt.compute_mask(a.vect_field, a.m, a.n, a.p)
-        mask2 = dt.compute_mask(a.vect_field, a.m, a.n, a.p)
+        mask2 = dt.compute_mask2(a.vect_field, a.m, a.n, a.p)
         fscores1[i] = dt.fscore(mask1, gt)
         fscores2[i] = dt.fscore(mask2, gt)
     t1 = time()
