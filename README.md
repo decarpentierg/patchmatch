@@ -42,9 +42,15 @@ Other examples can be found in the jupyter notebooks of the `notebooks` director
 ## References
 
 [1] Connelly Barnes et al. “PatchMatch: A Randomized Correspondence Algorithm for Structural Image Editing”. 2009.
+
 [2] Connelly Barnes et al. “The Generalized PatchMatch Correspondence Algorithm”. 2010.
+
 [3] Davide Cozzolino et al. “Copy-move forgery detection based on PatchMatch”. Oct. 2014.
+
 [4] Davide Cozzolino et al. “Efficient Dense-Field Copy–Move Forgery Detection”. Nov. 2015.
+
 [5] Thibaud Ehret. “Automatic Detection of Internal Copy-Move Forgeries in Images”. July 25, 2018.
+
 [6] Amir Tahmasbi et al. “Classification of benign and malignant masses based on Zernike moments”. Aug. 2011.
+
 [7] Yongqing Xin et al. “Accurate Computation of Zernike Moments in Polar Coordinates”. Feb. 2007.
