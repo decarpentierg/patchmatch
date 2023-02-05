@@ -1,1 +1,50 @@
-# patchmatch
+# Copy-Move Forgery Detection Based on PatchMatch
+
+Authors: Marien Renaud, Gonzague de Carpentier
+
+This repository contains a Python implementation of the algorithm described in “Copy-move forgery detection based on PatchMatch”, Cozzolino et al., 2014 [4]. The image database used to test the algorithm comes from the [authors' website](https://www.grip.unina.it/download/prog/CMFD/). All code of the repository is authored by Marien Renaud and Gonzague de Carpentier.
+
+## Usage
+
+The main file of the directory is `patchmatch.py`. It contains the class `PatchMatch` that enable to run the PatchMatch algorithm. Here is an example of how to use it.
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+
+import patchmatch as pm
+
+# Load example image
+im = Image.open("data/CMFD_DB/TP_C02_007_copy.png")
+im = np.array(im).astype("double")
+
+# Instantiate PatchMatch and compute Zernike moments
+a = pm.PatchMatch(
+    im,  # image
+    p=10,  # patch half-size
+    max_zrd=6,  # maximum Zernike degree
+    min_dn=64,   # minimum displacement norm (previously T)
+    n_rs_candidates=5,   # number of candidates in the random search phase (previously L)
+    init_method=2,  # whether to use create_vect_field1 or create_vect_field2
+    zernike=True  # whether to use Zernike moments
+)
+
+# Run 5 PatchMatch iterations
+a.run(5)
+
+# Get resulting displacement field
+print(a.vect_field.shape)
+```
+
+Other examples can be found in the jupyter notebooks of the `notebooks` directory.
+
+## References
+
+[1] Connelly Barnes et al. “PatchMatch: A Randomized Correspondence Algorithm for Structural Image Editing”. 2009.
+[2] Connelly Barnes et al. “The Generalized PatchMatch Correspondence Algorithm”. 2010.
+[3] Davide Cozzolino et al. “Copy-move forgery detection based on PatchMatch”. Oct. 2014.
+[4] Davide Cozzolino et al. “Efficient Dense-Field Copy–Move Forgery Detection”. Nov. 2015.
+[5] Thibaud Ehret. “Automatic Detection of Internal Copy-Move Forgeries in Images”. July 25, 2018.
+[6] Amir Tahmasbi et al. “Classification of benign and malignant masses based on Zernike moments”. Aug. 2011.
+[7] Yongqing Xin et al. “Accurate Computation of Zernike Moments in Polar Coordinates”. Feb. 2007.
